@@ -1,0 +1,28 @@
+schema = "taiwu-studio.mod-project.v1"
+name = "更好的太吾绘卷"
+namespace = "BetterTaiwuScroll.Frontend"
+author = "Taiwu Studio"
+version = "0.1.0"
+description = "优化常用界面体验：物品筛选补全与制作流程优化。"
+template = "basic_harmony"
+root = "C:\\Users\\Administrator\\AppData\\Roaming\\TaiwuStudio\\Taiwu Studio\\data\\mods\\BetterTaiwuScroll"
+
+[paths]
+config = "Config.lua"
+settings = "Settings.Lua"
+scripts = "Scripts"
+plugins = "Plugins"
+assets = "Assets"
+
+[build]
+toolchain = "roslyn-worker"
+assembly_name = "BetterTaiwuScrollFrontend"
+output_dir = "Plugins/Front"
+debug = true
+allow_unsafe = true
+lang_version = "latest"
+
+[harmony]
+enabled = true
+id = "BetterTaiwuScroll.Frontend"
+patch_all = true
