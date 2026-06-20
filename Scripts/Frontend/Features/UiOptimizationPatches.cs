@@ -15,6 +15,7 @@ internal static class CompactItemSortButtonGroupPatch
     private const float CompactButtonWidth = 112f;
     private const float CompactButtonHeight = 48f;
     private const float CompactSpacing = 4f;
+    private const float CompactBottomGap = 12f;
     private const float MinButtonWidth = 44f;
     private const float MaxButtonWidth = 112f;
     private const float AncestorWidthMargin = 24f;
@@ -90,35 +91,36 @@ internal static class CompactItemSortButtonGroupPatch
         var rows = Mathf.Max(1, Mathf.CeilToInt(activeCount / (float)columns));
         var buttonWidth = CalculateButtonWidth(availableWidth, columns);
         var targetWidth = columns * buttonWidth + CompactSpacing * Math.Max(columns - 1, 0);
-        var targetHeight = rows * CompactButtonHeight + CompactSpacing * Math.Max(rows - 1, 0);
+        var targetHeight = rows * CompactButtonHeight + CompactSpacing * Math.Max(rows - 1, 0) + CompactBottomGap;
 
-        itemRoot.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, targetWidth);
         itemRoot.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, targetHeight);
 
         var grid = itemRoot.GetComponent<GridLayoutGroup>();
         if (grid != null)
         {
+            grid.enabled = true;
             grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
             grid.constraintCount = columns;
             grid.cellSize = new Vector2(buttonWidth, CompactButtonHeight);
             grid.spacing = new Vector2(CompactSpacing, CompactSpacing);
+            grid.childAlignment = TextAnchor.UpperLeft;
         }
 
         var horizontal = itemRoot.GetComponent<HorizontalLayoutGroup>();
         if (horizontal != null)
         {
-            horizontal.enabled = rows <= 1;
+            horizontal.enabled = grid == null && rows <= 1;
             horizontal.spacing = Math.Min(horizontal.spacing, CompactSpacing);
             horizontal.childControlWidth = true;
             horizontal.childForceExpandWidth = false;
         }
 
         var rootLayoutElement = itemRoot.GetComponent<LayoutElement>() ?? itemRoot.gameObject.AddComponent<LayoutElement>();
-        rootLayoutElement.minWidth = targetWidth;
-        rootLayoutElement.preferredWidth = targetWidth;
+        rootLayoutElement.minWidth = -1f;
+        rootLayoutElement.preferredWidth = -1f;
         rootLayoutElement.minHeight = targetHeight;
         rootLayoutElement.preferredHeight = targetHeight;
-        rootLayoutElement.flexibleWidth = 0f;
+        rootLayoutElement.flexibleWidth = -1f;
         rootLayoutElement.flexibleHeight = 0f;
 
         for (var i = 0; i < itemRoot.childCount; i++)
@@ -136,6 +138,7 @@ internal static class CompactItemSortButtonGroupPatch
             layoutElement.flexibleWidth = 0f;
             layoutElement.minHeight = CompactButtonHeight;
             layoutElement.preferredHeight = CompactButtonHeight;
+            layoutElement.flexibleHeight = 0f;
 
             foreach (var label in child.GetComponentsInChildren<TextMeshProUGUI>(true))
             {
