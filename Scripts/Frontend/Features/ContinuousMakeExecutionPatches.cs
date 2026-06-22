@@ -154,6 +154,11 @@ internal static class ContinuousMakeExecutionController
             if (settings.EnableDurabilityProtection && WouldSelectedToolBreak(page))
                 yield break;
 
+            var makeResultReady = false;
+            yield return RefreshCurrentRandomMakeResult(page, material, value => makeResultReady = value);
+            if (!makeResultReady)
+                yield break;
+
             AccessTools.Method(typeof(MakeSubPageMake), "OnClickButtonConfirm")?.Invoke(page, Array.Empty<object>());
             continued = true;
         }
@@ -343,7 +348,7 @@ internal static class ContinuousMakeExecutionController
         ItemDisplayData bestMaterial = null;
         foreach (var item in allMaterials)
         {
-            if (item is not ItemDisplayData material || !IsMaterialAllowed(material, randomMake, randomMakeSubType))
+            if (item is not ItemDisplayData material || !IsMaterialAllowed(page, material, randomMake, randomMakeSubType))
                 continue;
 
             if (bestMaterial == null || IsBetterMaterial(material, bestMaterial))
@@ -353,7 +358,7 @@ internal static class ContinuousMakeExecutionController
         return bestMaterial;
     }
 
-    private static bool IsMaterialAllowed(ItemDisplayData material, bool randomMake, short randomMakeSubType)
+    private static bool IsMaterialAllowed(MakeSubPageMake page, ItemDisplayData material, bool randomMake, short randomMakeSubType)
     {
         if (material == null || material.Amount <= 0)
             return false;
@@ -361,7 +366,7 @@ internal static class ContinuousMakeExecutionController
         if (!ContinuousMakeSettingsStore.IsSourceAllowed(material.ItemSourceTypeEnum))
             return false;
 
-        if (randomMake && !MakeSubPageMakeHelper.CheckCanMakeTargetRandomType(randomMakeSubType, material))
+        if (!IsMaterialCompatibleWithTarget(page, material, randomMake, randomMakeSubType))
             return false;
 
         var settings = ContinuousMakeSettingsStore.Current;
@@ -369,6 +374,89 @@ internal static class ContinuousMakeExecutionController
         var highestRawGrade = DisplayGradeToRaw(settings.HighestMaterialGrade);
         var lowestRawGrade = DisplayGradeToRaw(settings.LowestMaterialGrade);
         return grade <= highestRawGrade && grade >= lowestRawGrade;
+    }
+
+    private static bool IsMaterialCompatibleWithTarget(MakeSubPageMake page, ItemDisplayData material, bool randomMake, short randomMakeSubType)
+    {
+        if (page == null || material == null)
+            return false;
+
+        if (randomMake)
+            return MakeSubPageMakeHelper.CheckCanMakeTargetRandomType(randomMakeSubType, material);
+
+        var targetSlot = Traverse.Create(page).Field("targetSlot").GetValue<MakeTargetSlot>();
+        if (targetSlot == null || !targetSlot.IsValid || targetSlot.ItemData == null)
+            return false;
+
+        var target = targetSlot.ItemData;
+        if (MakeSubPageMakeHelper.CheckIsRandomMake(target))
+            return MakeSubPageMakeHelper.CheckCanMakeTargetRandomType(randomMakeSubType, material);
+
+        if (material.RealKey.ItemType == 12)
+            return true;
+
+        try
+        {
+            var makeItemTypeId = Traverse.Create(page).Field("_makeItemTypeId").GetValue<short>();
+            if (makeItemTypeId < 0)
+                return false;
+
+            var makeItemType = Config.MakeItemType.Instance[makeItemTypeId];
+            var materialConfig = Config.Material.Instance[material.RealKey.TemplateId];
+            if (makeItemType == null || materialConfig == null || !materialConfig.CraftableItemTypes.Contains(makeItemType.TemplateId))
+                return false;
+
+            var targetGrade = target.Grade;
+            var resultGrade = (sbyte)0;
+            var requiredAttainment = (short)0;
+            var displayData = Traverse.Create(page).Field("DisplayData").GetValue<GameData.Domains.Building.BuildingMakeDisplayData>();
+            var buildingUpgradeMakeItem = displayData != null && displayData.BuildingUpgradeMakeItem;
+
+            if (target.RealKey.ItemType == 7)
+            {
+                resultGrade = targetGrade;
+                requiredAttainment = materialConfig.RequiredAttainment;
+            }
+            else
+            {
+                var parentView = MakeSelectMaterialPatch.GetParentView(page);
+                if (parentView == null)
+                    return false;
+
+                var isManual = Traverse.Create(page).Field("_isManual").GetValue<bool>();
+                var makeItemSubTypeId = isManual
+                    ? Traverse.Create(page).Field("_makeItemSubTypeId").GetValue<short>()
+                    : (short)-1;
+                var maxFinalAttainment = Traverse.Create(page).Field("_maxFinalAttainment").GetValue<int>();
+                var cookingSkillBookCount = displayData?.AllPagesReadCookingSkillBookCount ?? 0;
+                var buildingAttainmentEffect = displayData?.BuildingAttainmentEffect ?? 0;
+
+                requiredAttainment = GameData.Domains.Building.SharedMethods.GetMaterialGradeAndAttainment(
+                    material.RealKey.TemplateId,
+                    target.RealKey.ItemType,
+                    parentView.CurLifeSkillType,
+                    maxFinalAttainment,
+                    makeItemType.MakeItemSubTypes,
+                    out resultGrade,
+                    out _,
+                    cookingSkillBookCount,
+                    makeItemSubTypeId,
+                    buildingAttainmentEffect);
+            }
+
+            var range = GameData.Domains.Building.SharedMethods.GetMakeResultGradeRange(resultGrade, target.RealKey.ItemType);
+            var gradeMatchesTarget = targetGrade >= range.Item1 && targetGrade <= range.Item2;
+            if (targetGrade == range.Item2 && !buildingUpgradeMakeItem && materialConfig.Transferable)
+                gradeMatchesTarget = false;
+
+            var maxFinal = Traverse.Create(page).Field("_maxFinalAttainment").GetValue<int>();
+            return gradeMatchesTarget && maxFinal >= requiredAttainment;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[BetterTaiwuScroll] Continuous make target/material compatibility check failed: " + ex.Message);
+            return false;
+        }
     }
 
     private static bool IsBetterMaterial(ItemDisplayData candidate, ItemDisplayData current)
@@ -405,6 +493,116 @@ internal static class ContinuousMakeExecutionController
     {
         AccessTools.Method(typeof(MakeSubPageMake), "SelectMaterial", new[] { typeof(ItemDisplayData), typeof(bool) })
             ?.Invoke(page, new object[] { material, true });
+    }
+
+    private static IEnumerator RefreshCurrentRandomMakeResult(MakeSubPageMake page, ItemDisplayData selectedMaterial, Action<bool> setResult)
+    {
+        setResult(false);
+
+        var targetSlot = Traverse.Create(page).Field("targetSlot").GetValue<MakeTargetSlot>();
+        if (targetSlot == null || !targetSlot.IsValid || !MakeSubPageMakeHelper.CheckIsRandomMake(targetSlot.ItemData))
+        {
+            setResult(IsSelectedMaterial(page, selectedMaterial));
+            yield break;
+        }
+
+        if (!IsSelectedMaterial(page, selectedMaterial))
+            yield break;
+
+        var parentView = MakeSelectMaterialPatch.GetParentView(page);
+        var materialSlot = Traverse.Create(page).Field("materialSlot").GetValue<MakeTargetSlot>();
+        var toolSlot = Traverse.Create(page).Field("toolSlot").GetValue<MakeTargetSlot>();
+        var makeItemSubtypeIdList = Traverse.Create(page).Field("_makeItemSubtypeIdList").GetValue<List<short>>();
+        if (parentView == null || materialSlot == null || !materialSlot.IsValid || makeItemSubtypeIdList == null || makeItemSubtypeIdList.Count == 0)
+            yield break;
+
+        var isManual = Traverse.Create(page).Field("_isManual").GetValue<bool>();
+        var makeItemSubTypeId = isManual ? Traverse.Create(page).Field("_makeItemSubTypeId").GetValue<short>() : (short)-1;
+        var materialTemplateId = materialSlot.ItemData.RealKey.TemplateId;
+        var toolKey = toolSlot?.ItemData?.Key ?? GameData.Domains.Item.ItemKey.Invalid;
+        var subtypeIdListSnapshot = new List<short>(makeItemSubtypeIdList);
+        var done = false;
+        var callbackSucceeded = false;
+        var makeResult = default(GameData.Domains.Building.MakeResult);
+
+        try
+        {
+            GameData.Domains.Building.BuildingDomainMethod.AsyncCall.GetMakeResult(
+                parentView,
+                materialTemplateId,
+                toolKey,
+                parentView.BuildingBlockKey,
+                parentView.CurLifeSkillType,
+                subtypeIdListSnapshot,
+                makeItemSubTypeId,
+                targetSlot.IsToggleOn,
+                isManual,
+                (offset, pool) =>
+                {
+                    try
+                    {
+                        GameData.Serializer.Serializer.Deserialize(pool, offset, ref makeResult);
+                        callbackSucceeded = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogWarning("[BetterTaiwuScroll] Continuous make result deserialize failed: " + ex.Message);
+                    }
+                    finally
+                    {
+                        done = true;
+                    }
+                });
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[BetterTaiwuScroll] Continuous make result request failed: " + ex.Message);
+            yield break;
+        }
+
+        for (var i = 0; i < 90 && !done; i++)
+            yield return null;
+
+        if (!done || !callbackSucceeded)
+            yield break;
+
+        if (!ShouldRun(page) || !IsSelectedMaterial(page, selectedMaterial))
+            yield break;
+
+        if (!IsValidRandomMakeResult(makeResult))
+        {
+            Debug.LogWarning("[BetterTaiwuScroll] Continuous make stopped because random make result is not ready.");
+            yield break;
+        }
+
+        var resultDict = Traverse.Create(page).Field("_makeResultDict").GetValue<Dictionary<int, GameData.Domains.Building.MakeResult>>();
+        if (resultDict == null)
+            yield break;
+
+        resultDict.Clear();
+        resultDict[makeItemSubTypeId] = makeResult;
+        setResult(true);
+    }
+
+    private static bool IsSelectedMaterial(MakeSubPageMake page, ItemDisplayData material)
+    {
+        if (page == null || material == null || material.Amount <= 0)
+            return false;
+
+        var materialSlot = Traverse.Create(page).Field("materialSlot").GetValue<MakeTargetSlot>();
+        var selected = materialSlot?.ItemData;
+        return selected != null
+            && selected.RealKey.Equals(material.RealKey)
+            && selected.ItemSourceTypeEnum == material.ItemSourceTypeEnum;
+    }
+
+    private static bool IsValidRandomMakeResult(GameData.Domains.Building.MakeResult makeResult)
+    {
+        var stage = makeResult.TargetResultStage;
+        if (!stage.IsInit)
+            return false;
+
+        return stage.TemplateId >= 0 || (stage.TemplateIdList != null && stage.TemplateIdList.Count > 0);
     }
 
     private static bool IsConfirmInteractable(MakeSubPageMake page)

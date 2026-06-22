@@ -1,0 +1,11 @@
+{
+    "ContinuousMakeEnabled": true,
+    "IncludeInventory": true,
+    "IncludePrivateStorage": true,
+    "IncludePublicStorage": true,
+    "HighestMaterialGrade": 1,
+    "LowestMaterialGrade": 9,
+    "ToolGradePriority": 0,
+    "AllowBareHand": false,
+    "EnableDurabilityProtection": true
+}

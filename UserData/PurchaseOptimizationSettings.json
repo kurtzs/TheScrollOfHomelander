@@ -1,0 +1,7 @@
+{
+    "LowestPurchaseGrade": 9,
+    "HighestPurchaseGrade": 1,
+    "SkipPriceIncreasedItems": false,
+    "SkipOriginalPriceItems": false,
+    "IncludeLimitedPurityLockedLevels": false
+}

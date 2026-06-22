@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using HarmonyLib;
 using TMPro;
 using UnityEngine;
@@ -13,188 +12,34 @@ using UGui = UnityEngine.UI;
 
 namespace BetterTaiwuScroll.Frontend;
 
-[Serializable]
-internal sealed class ContinuousMakeSettings
+internal sealed class PurchaseOptimizationSettingsPanel : MonoBehaviour
 {
-    public bool ContinuousMakeEnabled = false;
-    public bool IncludeInventory = true;
-    public bool IncludePrivateStorage = true;
-    public bool IncludePublicStorage = true;
-    public int HighestMaterialGrade = 1;
-    public int LowestMaterialGrade = 9;
-    public int ToolGradePriority = 0;
-    public bool AllowBareHand = true;
-    public bool EnableDurabilityProtection = true;
-
-    internal void Normalize()
-    {
-        HighestMaterialGrade = Mathf.Clamp(HighestMaterialGrade, 1, 9);
-        LowestMaterialGrade = Mathf.Clamp(LowestMaterialGrade, 1, 9);
-        if (HighestMaterialGrade > LowestMaterialGrade)
-            LowestMaterialGrade = HighestMaterialGrade;
-
-        ToolGradePriority = Mathf.Clamp(ToolGradePriority, 0, 1);
-    }
-}
-
-internal static class ContinuousMakeSettingsStore
-{
-    private const string FileName = "ContinuousMakeSettings.json";
-
-    internal static ContinuousMakeSettings Current { get; private set; } = new ContinuousMakeSettings();
-
-    internal static void Load()
-    {
-        try
-        {
-            foreach (var path in GetSettingsPathCandidates())
-            {
-                if (!File.Exists(path))
-                    continue;
-
-                Current = JsonUtility.FromJson<ContinuousMakeSettings>(File.ReadAllText(path)) ?? new ContinuousMakeSettings();
-                break;
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogWarning("[BetterTaiwuScroll] Failed to load continuous make settings: " + ex);
-            Current = new ContinuousMakeSettings();
-        }
-
-        Current.Normalize();
-    }
-
-    internal static void Save()
-    {
-        try
-        {
-            Current.Normalize();
-            var path = GetSettingsPath();
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
-            File.WriteAllText(path, JsonUtility.ToJson(Current, true));
-        }
-        catch (Exception ex)
-        {
-            Debug.LogWarning("[BetterTaiwuScroll] Failed to save continuous make settings: " + ex);
-        }
-    }
-
-    internal static bool IsSourceAllowed(GameData.Domains.Taiwu.ItemSourceType sourceType)
-    {
-        var settings = Current;
-        return sourceType switch
-        {
-            GameData.Domains.Taiwu.ItemSourceType.Inventory => settings.IncludeInventory,
-            GameData.Domains.Taiwu.ItemSourceType.Warehouse => settings.IncludePrivateStorage,
-            GameData.Domains.Taiwu.ItemSourceType.Treasury => settings.IncludePublicStorage,
-            _ => false
-        };
-    }
-
-    private static string GetSettingsPath()
-    {
-        return ModUserDataPaths.GetFilePath(FileName);
-    }
-
-    private static IEnumerable<string> GetSettingsPathCandidates()
-    {
-        yield return GetSettingsPath();
-    }
-}
-
-internal static class NativeContinuousMakeSettingsTemplates
-{
-    internal static SysSetting.BoolSettingItem BoolSettingPrefab;
-    internal static SysSetting.EnumSettingItem EnumSettingPrefab;
-    internal static SysSetting.SwitchButtonSettingItem SwitchButtonSettingPrefab;
-
-    private static bool _requesting;
-
-    internal static bool Ready => BoolSettingPrefab != null && EnumSettingPrefab != null && SwitchButtonSettingPrefab != null;
-
-    internal static void Request(Action onReady)
-    {
-        if (TryFind())
-        {
-            onReady?.Invoke();
-            return;
-        }
-
-        if (_requesting)
-            return;
-
-        _requesting = true;
-        UIElement.SystemSetting.PrepareRes(false, go =>
-        {
-            _requesting = false;
-            CacheFrom(go == null ? null : go.GetComponentInChildren<SysSetting.ViewSystemSetting>(true));
-            TryFind();
-            onReady?.Invoke();
-        });
-    }
-
-    private static bool TryFind()
-    {
-        if (Ready)
-            return true;
-
-        foreach (var template in Resources.FindObjectsOfTypeAll<SysSetting.ViewSystemSetting>())
-        {
-            CacheFrom(template);
-            if (Ready)
-                return true;
-        }
-
-        return false;
-    }
-
-    private static void CacheFrom(SysSetting.ViewSystemSetting template)
-    {
-        if (template == null)
-            return;
-
-        var traverse = Traverse.Create(template);
-        BoolSettingPrefab ??= traverse.Field("boolSettingPrefab").GetValue<SysSetting.BoolSettingItem>();
-        EnumSettingPrefab ??= traverse.Field("enumSettingPrefab").GetValue<SysSetting.EnumSettingItem>();
-        SwitchButtonSettingPrefab ??= traverse.Field("switchButtonSettingPrefab").GetValue<SysSetting.SwitchButtonSettingItem>();
-    }
-}
-
-internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
-{
-    private const string PanelName = "BetterTaiwuScrollContinuousMakeSettingsPanel";
-    private const string ContentName = "BetterTaiwuScrollContinuousMakeSettingsContent";
-    private const string InputBlockerName = "BetterTaiwuScrollContinuousMakeInputBlocker";
+    private const string PanelName = "BetterTaiwuScrollPurchaseOptimizationSettingsPanel";
+    private const string ContentName = "BetterTaiwuScrollPurchaseOptimizationSettingsContent";
+    private const string InputBlockerName = "BetterTaiwuScrollPurchaseOptimizationInputBlocker";
     private const float PanelMinWidth = 1220f;
-    private const float PanelMinHeight = 820f;
+    private const float PanelMinHeight = 760f;
     private const float ContentWidth = 940f;
-    private const float ContentHeight = 450f;
-    private const float ContentTopOffset = 138f;
-    private const float RowHeight = 48f;
-    private const float RowSpacing = 8f;
+    private const float ContentHeight = 360f;
+    private const float ContentTopOffset = 150f;
+    private const float RowHeight = 52f;
+    private const float RowSpacing = 12f;
     private const int PanelSortingOrder = 5000;
 
     private static readonly string[] GradeNames =
     {
-        "神·一品",
-        "绝·二品",
-        "超·三品",
-        "极·四品",
-        "秘·五品",
-        "奇·六品",
-        "上·七品",
-        "中·八品",
-        "下·九品"
+        "神一品",
+        "绝二品",
+        "超三品",
+        "极四品",
+        "秘五品",
+        "妙六品",
+        "上七品",
+        "中八品",
+        "下九品"
     };
 
-    private static readonly string[] ToolPriorityNames =
-    {
-        "高品",
-        "低品"
-    };
-
-    private static ContinuousMakeSettingsPanel _current;
+    private static PurchaseOptimizationSettingsPanel _current;
     private static bool _requestingArchiveTemplate;
     private static Action _onArchiveTemplateReady;
 
@@ -205,9 +50,9 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
     private bool _syncing;
     private bool _masked;
 
-    internal static void Show(ViewMake owner)
+    internal static void Show(MonoBehaviour owner)
     {
-        ContinuousMakeSettingsStore.Load();
+        PurchaseOptimizationSettingsStore.Load();
 
         if (!NativeContinuousMakeSettingsTemplates.Ready)
         {
@@ -261,7 +106,7 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
         var sourcePanel = FindRevertArchivePanelSource(template);
         if (sourcePanel == null)
         {
-            Debug.LogWarning("[BetterTaiwuScroll] Failed to find revert archive panel source.");
+            Debug.LogWarning("[BetterTaiwuScroll] Failed to find purchase settings panel source.");
             return;
         }
 
@@ -273,7 +118,7 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
         panelObj.name = PanelName;
         panelObj.SetActive(false);
 
-        var panel = panelObj.AddComponent<ContinuousMakeSettingsPanel>();
+        var panel = panelObj.AddComponent<PurchaseOptimizationSettingsPanel>();
         panel._panelRoot = panelObj.transform as RectTransform;
         panel.ConfigureClone();
         panel.Build();
@@ -313,14 +158,11 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
             view.enabled = false;
         }
 
-        if (title == null)
-            title = FindTitleText();
-        if (scroll == null)
-            scroll = FindComponentByTypeName("InfinityScroll");
-        if (confirmBtn == null)
-            confirmBtn = FindDeep(transform, "EnterGame")?.GetComponent<CButton>();
+        title ??= FindTitleText();
+        scroll ??= FindComponentByTypeName("InfinityScroll");
+        confirmBtn ??= FindDeep(transform, "EnterGame")?.GetComponent<CButton>();
         if (title != null)
-            title.SetText("连续制作设置");
+            title.SetText("批量采购设置");
 
         if (scroll != null)
             scroll.gameObject.SetActive(false);
@@ -575,14 +417,11 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
         if (_contentRoot == null)
             return;
 
-        AddBoolRow("是否包括行囊", () => ContinuousMakeSettingsStore.Current.IncludeInventory, value => ContinuousMakeSettingsStore.Current.IncludeInventory = value);
-        AddBoolRow("是否包括私库", () => ContinuousMakeSettingsStore.Current.IncludePrivateStorage, value => ContinuousMakeSettingsStore.Current.IncludePrivateStorage = value);
-        AddBoolRow("是否包括公库", () => ContinuousMakeSettingsStore.Current.IncludePublicStorage, value => ContinuousMakeSettingsStore.Current.IncludePublicStorage = value);
-        AddDropdownRow("允许使用的最高引子品级", GradeNames, () => GradeToIndex(ContinuousMakeSettingsStore.Current.HighestMaterialGrade), OnHighestGradeChanged);
-        AddDropdownRow("允许使用的最低引子品级", GradeNames, () => GradeToIndex(ContinuousMakeSettingsStore.Current.LowestMaterialGrade), OnLowestGradeChanged);
-        AddSwitchRow("优先使用工具的品级", ToolPriorityNames, () => ContinuousMakeSettingsStore.Current.ToolGradePriority, value => ContinuousMakeSettingsStore.Current.ToolGradePriority = value);
-        AddBoolRow("是否允许徒手制作", () => ContinuousMakeSettingsStore.Current.AllowBareHand, value => ContinuousMakeSettingsStore.Current.AllowBareHand = value);
-        AddBoolRow("是否开启耐久保护", () => ContinuousMakeSettingsStore.Current.EnableDurabilityProtection, value => ContinuousMakeSettingsStore.Current.EnableDurabilityProtection = value);
+        AddDropdownRow("采购的最低品级", GradeNames, () => GradeToIndex(PurchaseOptimizationSettingsStore.Current.LowestPurchaseGrade), OnLowestGradeChanged);
+        AddDropdownRow("采购的最高品级", GradeNames, () => GradeToIndex(PurchaseOptimizationSettingsStore.Current.HighestPurchaseGrade), OnHighestGradeChanged);
+        AddBoolRow("不采购涨价的物品", () => PurchaseOptimizationSettingsStore.Current.SkipPriceIncreasedItems, value => PurchaseOptimizationSettingsStore.Current.SkipPriceIncreasedItems = value);
+        AddBoolRow("不采购原价的物品", () => PurchaseOptimizationSettingsStore.Current.SkipOriginalPriceItems, value => PurchaseOptimizationSettingsStore.Current.SkipOriginalPriceItems = value);
+        AddBoolRow("未解锁精纯商店也采购", () => PurchaseOptimizationSettingsStore.Current.IncludeLimitedPurityLockedLevels, value => PurchaseOptimizationSettingsStore.Current.IncludeLimitedPurityLockedLevels = value);
 
         RefreshValues();
     }
@@ -656,63 +495,6 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
         Bind();
     }
 
-    private void AddSwitchRow(string label, IReadOnlyList<string> options, Func<int> getter, Action<int> setter)
-    {
-        var item = Instantiate(NativeContinuousMakeSettingsTemplates.SwitchButtonSettingPrefab, _contentRoot);
-        item.gameObject.name = "Setting_" + label;
-        PrepareRow(item.gameObject, label);
-
-        var traverse = Traverse.Create(item);
-        var leftBtn = traverse.Field("leftBtn").GetValue<FwUi.CButton>();
-        var rightBtn = traverse.Field("rightBtn").GetValue<FwUi.CButton>();
-        var valueText = traverse.Field("valueText").GetValue<TextMeshProUGUI>();
-
-        var value = Mathf.Clamp(getter(), 0, options.Count - 1);
-        void ApplyValue(int next)
-        {
-            value = Mathf.Clamp(next, 0, options.Count - 1);
-            if (valueText != null)
-                valueText.SetText(options[value]);
-            if (leftBtn != null)
-                leftBtn.interactable = value > 0;
-            if (rightBtn != null)
-                rightBtn.interactable = value < options.Count - 1;
-        }
-
-        void Bind()
-        {
-            if (leftBtn != null)
-                leftBtn.onClick = new UGui.Button.ButtonClickedEvent();
-            if (rightBtn != null)
-                rightBtn.onClick = new UGui.Button.ButtonClickedEvent();
-
-            value = Mathf.Clamp(getter(), 0, options.Count - 1);
-            leftBtn?.onClick.AddListener(() =>
-            {
-                if (_syncing)
-                    return;
-
-                ApplyValue(value - 1);
-                setter(value);
-                SaveAndRefresh();
-            });
-            rightBtn?.onClick.AddListener(() =>
-            {
-                if (_syncing)
-                    return;
-
-                ApplyValue(value + 1);
-                setter(value);
-                SaveAndRefresh();
-            });
-
-            ApplyValue(value);
-        }
-
-        _controlRebinds.Add(Bind);
-        Bind();
-    }
-
     private void PrepareRow(GameObject row, string label)
     {
         row.SetActive(true);
@@ -750,7 +532,7 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
     private void RefreshValues()
     {
         _syncing = true;
-        ContinuousMakeSettingsStore.Current.Normalize();
+        PurchaseOptimizationSettingsStore.Current.Normalize();
 
         foreach (var item in GetComponentsInChildren<SysSetting.BoolSettingItem>(true))
         {
@@ -761,11 +543,9 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
 
             toggle.SetIsOnWithoutNotify(label switch
             {
-                "是否包括行囊" => ContinuousMakeSettingsStore.Current.IncludeInventory,
-                "是否包括私库" => ContinuousMakeSettingsStore.Current.IncludePrivateStorage,
-                "是否包括公库" => ContinuousMakeSettingsStore.Current.IncludePublicStorage,
-                "是否允许徒手制作" => ContinuousMakeSettingsStore.Current.AllowBareHand,
-                "是否开启耐久保护" => ContinuousMakeSettingsStore.Current.EnableDurabilityProtection,
+                "不采购涨价的物品" => PurchaseOptimizationSettingsStore.Current.SkipPriceIncreasedItems,
+                "不采购原价的物品" => PurchaseOptimizationSettingsStore.Current.SkipOriginalPriceItems,
+                "未解锁精纯商店也采购" => PurchaseOptimizationSettingsStore.Current.IncludeLimitedPurityLockedLevels,
                 _ => toggle.isOn
             });
         }
@@ -779,53 +559,34 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
 
             dropdown.SetValueWithoutNotify(label switch
             {
-                "允许使用的最高引子品级" => GradeToIndex(ContinuousMakeSettingsStore.Current.HighestMaterialGrade),
-                "允许使用的最低引子品级" => GradeToIndex(ContinuousMakeSettingsStore.Current.LowestMaterialGrade),
+                "采购的最低品级" => GradeToIndex(PurchaseOptimizationSettingsStore.Current.LowestPurchaseGrade),
+                "采购的最高品级" => GradeToIndex(PurchaseOptimizationSettingsStore.Current.HighestPurchaseGrade),
                 _ => dropdown.value
             });
-        }
-
-        foreach (var item in GetComponentsInChildren<SysSetting.SwitchButtonSettingItem>(true))
-        {
-            var label = Traverse.Create(item).Field("labelText").GetValue<TextMeshProUGUI>()?.text;
-            if (label != "优先使用工具的品级")
-                continue;
-
-            var value = Mathf.Clamp(ContinuousMakeSettingsStore.Current.ToolGradePriority, 0, ToolPriorityNames.Length - 1);
-            var traverse = Traverse.Create(item);
-            var valueText = traverse.Field("valueText").GetValue<TextMeshProUGUI>();
-            var leftBtn = traverse.Field("leftBtn").GetValue<FwUi.CButton>();
-            var rightBtn = traverse.Field("rightBtn").GetValue<FwUi.CButton>();
-            if (valueText != null)
-                valueText.SetText(ToolPriorityNames[value]);
-            if (leftBtn != null)
-                leftBtn.interactable = value > 0;
-            if (rightBtn != null)
-                rightBtn.interactable = value < ToolPriorityNames.Length - 1;
         }
 
         _syncing = false;
     }
 
-    private void OnHighestGradeChanged(int index)
-    {
-        var grade = IndexToGrade(index);
-        ContinuousMakeSettingsStore.Current.HighestMaterialGrade = grade;
-        if (ContinuousMakeSettingsStore.Current.LowestMaterialGrade < grade)
-            ContinuousMakeSettingsStore.Current.LowestMaterialGrade = grade;
-    }
-
     private void OnLowestGradeChanged(int index)
     {
         var grade = IndexToGrade(index);
-        ContinuousMakeSettingsStore.Current.LowestMaterialGrade = grade;
-        if (ContinuousMakeSettingsStore.Current.HighestMaterialGrade > grade)
-            ContinuousMakeSettingsStore.Current.HighestMaterialGrade = grade;
+        PurchaseOptimizationSettingsStore.Current.LowestPurchaseGrade = grade;
+        if (PurchaseOptimizationSettingsStore.Current.HighestPurchaseGrade > grade)
+            PurchaseOptimizationSettingsStore.Current.HighestPurchaseGrade = grade;
+    }
+
+    private void OnHighestGradeChanged(int index)
+    {
+        var grade = IndexToGrade(index);
+        PurchaseOptimizationSettingsStore.Current.HighestPurchaseGrade = grade;
+        if (PurchaseOptimizationSettingsStore.Current.LowestPurchaseGrade < grade)
+            PurchaseOptimizationSettingsStore.Current.LowestPurchaseGrade = grade;
     }
 
     private void SaveAndRefresh()
     {
-        ContinuousMakeSettingsStore.Save();
+        PurchaseOptimizationSettingsStore.Save();
         RefreshValues();
     }
 
@@ -994,7 +755,7 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
             {
                 case "头像":
                 case "名字":
-                case "第几世":
+                case "第几个":
                 case "存档时间":
                 case "所在地点":
                     headerTexts.Add(text.transform);
@@ -1044,7 +805,7 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
 
             var width = Mathf.Abs(rect.rect.width);
             var height = Mathf.Abs(rect.rect.height);
-            if (width < 900f || width > 1400f || height < 520f || height > 950f)
+            if (width < 900f || width > 1400f || height < 500f || height > 950f)
                 continue;
 
             var score = width * height - Mathf.Abs(width - PanelMinWidth) * 250f - Mathf.Abs(height - PanelMinHeight) * 250f;

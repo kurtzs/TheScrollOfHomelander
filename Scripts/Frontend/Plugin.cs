@@ -13,6 +13,8 @@ public sealed class Plugin : TaiwuRemakePlugin
 {
     internal static bool EnableCompactSortButtons = true;
     internal static bool EnableInlineFilterButtons = true;
+    internal static bool EnableSimplifyFilterIcons = false;
+    internal static bool EnableSimplifiedFilterIconUnderlines = false;
     internal static bool EnableContainerCompact = true;
     internal static bool EnableDefaultContainerCardMode = true;
     internal static float InventoryContainerScale = 0.7f;
@@ -27,6 +29,14 @@ public sealed class Plugin : TaiwuRemakePlugin
     internal static bool EnableAutoSelectFoodMaterial = true;
     internal static bool EnableAutoSelectMedicineMaterial = true;
     internal static bool EnableAutoSelectPoisonMaterial = true;
+    internal static bool EnableFilterMemory = true;
+    internal static bool EnableSortMemory = true;
+    internal static bool EnableStrategyPresetMemory = true;
+    internal static bool EnableLifeSkillAutoModeMemory = true;
+    internal static bool EnableBulkPurchaseUi = true;
+    internal static bool EnableShopStockPage = true;
+    internal static bool EnableFastTransfer = true;
+    internal static bool InvertFastTransfer = false;
 
     private Harmony _harmony;
 
@@ -34,6 +44,8 @@ public sealed class Plugin : TaiwuRemakePlugin
     {
         LoadSettings(ModIdStr);
         ContinuousMakeSettingsStore.Load();
+        MemoryOptimizationSettingsStore.Load();
+        PurchaseOptimizationSettingsStore.Load();
         _harmony = new Harmony("taiwu-studio.better-taiwu-scroll.frontend");
         _harmony.PatchAll(typeof(Plugin).Assembly);
     }
@@ -43,6 +55,9 @@ public sealed class Plugin : TaiwuRemakePlugin
         LoadSettings(ModIdStr);
         ContinuousMakeUiController.RefreshAll();
         ContainerCompactPatches.RefreshAllActive(allowRestore: true);
+        SimplifiedFilterToggleVisual.RefreshAllActive();
+        PurchaseOptimizationUiController.RefreshAll();
+        ShopStockPageSupport.RefreshAllActive();
     }
 
     public override void Dispose()
@@ -55,6 +70,8 @@ public sealed class Plugin : TaiwuRemakePlugin
     {
         LoadSetting(modIdStr, "compact_sort_buttons", ref EnableCompactSortButtons);
         LoadSetting(modIdStr, "inline_filter_buttons", ref EnableInlineFilterButtons);
+        LoadSetting(modIdStr, "simplify_filter_icons", ref EnableSimplifyFilterIcons);
+        LoadSetting(modIdStr, "simplified_filter_icon_underlines", ref EnableSimplifiedFilterIconUnderlines);
         LoadSetting(modIdStr, "container_compact", ref EnableContainerCompact);
         LoadSetting(modIdStr, "container_default_card_mode", ref EnableDefaultContainerCardMode);
         LoadScaleSetting(modIdStr, "container_inventory_scale", ref InventoryContainerScale);
@@ -78,6 +95,14 @@ public sealed class Plugin : TaiwuRemakePlugin
         LoadSetting(modIdStr, "auto_select_food_material", ref EnableAutoSelectFoodMaterial);
         LoadSetting(modIdStr, "auto_select_medicine_material", ref EnableAutoSelectMedicineMaterial);
         LoadSetting(modIdStr, "auto_select_poison_material", ref EnableAutoSelectPoisonMaterial);
+        LoadSetting(modIdStr, "memory_filter_enabled", ref EnableFilterMemory);
+        LoadSetting(modIdStr, "memory_sort_enabled", ref EnableSortMemory);
+        LoadSetting(modIdStr, "memory_strategy_preset_enabled", ref EnableStrategyPresetMemory);
+        LoadSetting(modIdStr, "memory_lifeskill_auto_mode_enabled", ref EnableLifeSkillAutoModeMemory);
+        LoadSetting(modIdStr, "bulk_purchase_ui", ref EnableBulkPurchaseUi);
+        LoadSetting(modIdStr, "shop_show_stock_page", ref EnableShopStockPage);
+        LoadSetting(modIdStr, "fast_transfer", ref EnableFastTransfer);
+        LoadSetting(modIdStr, "invert_fast_transfer", ref InvertFastTransfer);
     }
 
     private static void LoadSetting(string modIdStr, string key, ref bool value)

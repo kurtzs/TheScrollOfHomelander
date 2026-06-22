@@ -269,6 +269,7 @@ internal static class ContainerDefaultCardModePatch
     private static readonly FieldInfo ToggleActiveIndexField = AccessTools.Field(AccessTools.TypeByName("FrameWork.UISystem.UIElements.CToggleGroup"), "_activeIndex");
 
     private static Type _viewCharacterMenuItemsType;
+    private static Type _viewExchangeBaseType;
     private static bool _typeLookupDone;
 
     [HarmonyPostfix]
@@ -304,6 +305,8 @@ internal static class ContainerDefaultCardModePatch
         {
             if (_viewCharacterMenuItemsType != null && current.GetComponent(_viewCharacterMenuItemsType) != null)
                 return true;
+            if (_viewExchangeBaseType != null && current.GetComponent(_viewExchangeBaseType) != null)
+                return true;
 
             current = current.parent;
             depth++;
@@ -319,6 +322,7 @@ internal static class ContainerDefaultCardModePatch
 
         _typeLookupDone = true;
         _viewCharacterMenuItemsType = AccessTools.TypeByName("Game.Views.CharacterMenu.ViewCharacterMenuItems");
+        _viewExchangeBaseType = AccessTools.TypeByName("Game.Views.Exchange.ViewExchangeBase");
     }
 }
 
