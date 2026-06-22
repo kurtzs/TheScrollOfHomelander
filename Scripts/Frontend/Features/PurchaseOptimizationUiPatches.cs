@@ -124,6 +124,7 @@ internal static class ViewExchangeBaseShopStockItemSourcePatch
             return;
 
         __instance.Exchange?.SetItemSource((sbyte)ItemSourceType.Stock);
+        ShopStockPageSupport.SyncStockToggleState(__instance);
     }
 }
 
@@ -152,6 +153,38 @@ internal static class ShopStockPageSupport
         stockToggle.gameObject.SetActive(shouldShow);
         if (!shouldShow && currPage.GetActiveIndex() == StockPageIndex)
             currPage.Set(0);
+
+        RefreshOriginalDisabledSourceTooltips(currPage);
+        if (shouldShow && !stockToggle.interactable && currPage.GetActiveIndex() == StockPageIndex && view.Exchange != null)
+            currPage.Set(0);
+    }
+
+    internal static void SyncStockToggleState(ExchangeViewBase view)
+    {
+        var container = Traverse.Create(view).Field("exchangeContainer").GetValue<ExchangeContainerView>();
+        var currPage = container?.currPage;
+        var stockToggle = currPage?.Get(StockPageIndex);
+        if (stockToggle == null || !stockToggle.gameObject.activeSelf || !stockToggle.interactable)
+            return;
+
+        currPage.SetWithoutNotify(StockPageIndex);
+    }
+
+    private static void RefreshOriginalDisabledSourceTooltips(CToggleGroup currPage)
+    {
+        if (currPage == null)
+            return;
+
+        for (var i = 1; i <= StockPageIndex; i++)
+        {
+            var toggle = currPage.Get(i);
+            if (toggle == null)
+                continue;
+
+            var tooltip = toggle.GetComponent<TooltipInvoker>();
+            if (tooltip != null)
+                tooltip.enabled = toggle.gameObject.activeSelf && !toggle.interactable;
+        }
     }
 
     private static bool IsStockUnlocked()
