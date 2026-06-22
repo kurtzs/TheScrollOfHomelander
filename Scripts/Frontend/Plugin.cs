@@ -15,6 +15,8 @@ public sealed class Plugin : TaiwuRemakePlugin
     internal static bool EnableInlineFilterButtons = true;
     internal static bool EnableSimplifyFilterIcons = false;
     internal static bool EnableSimplifiedFilterIconUnderlines = false;
+    internal static bool EnableMapTileIconYOffset = true;
+    internal static int MapTileIconYOffsetPercent = 35;
     internal static bool EnableContainerCompact = true;
     internal static bool EnableDefaultContainerCardMode = true;
     internal static float InventoryContainerScale = 0.7f;
@@ -58,10 +60,13 @@ public sealed class Plugin : TaiwuRemakePlugin
         SimplifiedFilterToggleVisual.RefreshAllActive();
         PurchaseOptimizationUiController.RefreshAll();
         ShopStockPageSupport.RefreshAllActive();
+        if (!EnableMapTileIconYOffset)
+            MapTileIconPositionSupport.RestoreAll();
     }
 
     public override void Dispose()
     {
+        MapTileIconPositionSupport.RestoreAll();
         _harmony?.UnpatchSelf();
         _harmony = null;
     }
@@ -72,6 +77,9 @@ public sealed class Plugin : TaiwuRemakePlugin
         LoadSetting(modIdStr, "inline_filter_buttons", ref EnableInlineFilterButtons);
         LoadSetting(modIdStr, "simplify_filter_icons", ref EnableSimplifyFilterIcons);
         LoadSetting(modIdStr, "simplified_filter_icon_underlines", ref EnableSimplifiedFilterIconUnderlines);
+        LoadSetting(modIdStr, "map_tile_icon_y_offset", ref EnableMapTileIconYOffset);
+        LoadIntSetting(modIdStr, "map_tile_icon_y_offset_percent", ref MapTileIconYOffsetPercent);
+        MapTileIconYOffsetPercent = Mathf.Clamp(MapTileIconYOffsetPercent, 0, 50);
         LoadSetting(modIdStr, "container_compact", ref EnableContainerCompact);
         LoadSetting(modIdStr, "container_default_card_mode", ref EnableDefaultContainerCardMode);
         LoadScaleSetting(modIdStr, "container_inventory_scale", ref InventoryContainerScale);
@@ -126,6 +134,16 @@ public sealed class Plugin : TaiwuRemakePlugin
         }
 
         value = ClampContainerScale(percent / 100f);
+    }
+
+    private static void LoadIntSetting(string modIdStr, string key, ref int value)
+    {
+        if (ModManager.GetSetting(modIdStr, key, ref value))
+            return;
+
+        var entryValue = GetSettingEntryValue(modIdStr, key);
+        if (entryValue != null)
+            value = Convert.ToInt32(entryValue);
     }
 
     private static float ClampContainerScale(float value)

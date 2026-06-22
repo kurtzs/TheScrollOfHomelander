@@ -84,13 +84,32 @@ internal static class ViewShopFastTransferTargetItemPatch
 
 internal static class FastTransferSupport
 {
+    private enum FastTransferMode
+    {
+        None,
+        All,
+        Half,
+    }
+
     internal static bool ShouldUseFastTransfer()
     {
+        return GetFastTransferMode() != FastTransferMode.None;
+    }
+
+    private static FastTransferMode GetFastTransferMode()
+    {
         if (!Plugin.EnableFastTransfer)
-            return false;
+            return FastTransferMode.None;
+
+        var ctrlPressed = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+        if (ctrlPressed)
+            return FastTransferMode.Half;
 
         var shiftPressed = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
-        return Plugin.InvertFastTransfer ? !shiftPressed : shiftPressed;
+        if (Plugin.InvertFastTransfer)
+            return shiftPressed ? FastTransferMode.None : FastTransferMode.All;
+
+        return shiftPressed ? FastTransferMode.All : FastTransferMode.None;
     }
 
     internal static bool TryHandleClickItem(
@@ -101,7 +120,8 @@ internal static class FastTransferSupport
         Action<RowItemLine, int> action,
         int limitCount = 0)
     {
-        if (!ShouldUseFastTransfer())
+        var mode = GetFastTransferMode();
+        if (mode == FastTransferMode.None)
             return false;
 
         if (view == null || scroll == null || itemData == null || rowItemLine == null || action == null)
@@ -109,7 +129,7 @@ internal static class FastTransferSupport
 
         scroll.HandleClickItem(itemData, rowItemLine, clickedRow =>
         {
-            var count = GetMaxSelectableCount(itemData, limitCount);
+            var count = GetSelectableCount(itemData, limitCount, mode);
             if (count <= 0)
             {
                 rowItemLine.SetSelected(selected: false);
@@ -147,12 +167,13 @@ internal static class FastTransferSupport
         }
     }
 
-    private static int GetMaxSelectableCount(ITradeableContent itemData, int limitCount)
+    private static int GetSelectableCount(ITradeableContent itemData, int limitCount, FastTransferMode mode)
     {
         if (itemData == null || itemData.Amount <= 0)
             return 0;
 
-        return limitCount > 0 ? Mathf.Min(itemData.Amount, limitCount) : itemData.Amount;
+        var maxCount = limitCount > 0 ? Mathf.Min(itemData.Amount, limitCount) : itemData.Amount;
+        return mode == FastTransferMode.Half ? Mathf.Max(1, (maxCount + 1) / 2) : maxCount;
     }
 
     private static void Refresh(ExchangeViewBase view)
