@@ -101,8 +101,16 @@ internal sealed class ContinuousMakeUiController : MonoBehaviour
     private ViewMake _view;
     private CToggle _continuousToggle;
     private CButton _settingsButton;
+    private CButton _batchMakeButton;
 
     internal static bool IsContinuousMakeEnabled => Plugin.EnableContinuousMakeUi && ContinuousMakeSettingsStore.Current.ContinuousMakeEnabled;
+
+    internal static bool IsContinuousMakeEnabledFor(ViewMake view)
+    {
+        return Plugin.EnableContinuousMakeUi
+            && view != null
+            && ContinuousMakeSettingsStore.GetFor(view).ContinuousMakeEnabled;
+    }
 
     internal static ContinuousMakeUiController GetOrAdd(ViewMake view)
     {
@@ -132,14 +140,19 @@ internal sealed class ContinuousMakeUiController : MonoBehaviour
         {
             SetActive(_continuousToggle, false);
             SetActive(_settingsButton, false);
+            SetActive(_batchMakeButton, false);
             return;
         }
 
         EnsureSettingsButton();
         activeMakePage ??= GetActiveMakePage();
         EnsureContinuousToggle(activeMakePage);
+        EnsureBatchMakeButton(activeMakePage);
         SetActive(_settingsButton, true);
-        SetActive(_continuousToggle, activeMakePage != null && activeMakePage.gameObject.activeInHierarchy);
+        var settings = ContinuousMakeSettingsStore.GetFor(_view);
+        var showMakeControls = activeMakePage != null && activeMakePage.gameObject.activeInHierarchy;
+        SetActive(_continuousToggle, showMakeControls && settings.BatchMakeStartMode == 0);
+        SetActive(_batchMakeButton, showMakeControls && settings.BatchMakeStartMode == 1);
     }
 
     private void EnsureContinuousToggle(MakeSubPageMake page)
@@ -186,8 +199,56 @@ internal sealed class ContinuousMakeUiController : MonoBehaviour
         toggleRect.localScale = Vector3.one;
         toggleRect.SetAsLastSibling();
 
-        _continuousToggle.SetIsOnWithoutNotify(ContinuousMakeSettingsStore.Current.ContinuousMakeEnabled);
+        _continuousToggle.SetIsOnWithoutNotify(ContinuousMakeSettingsStore.GetFor(_view).ContinuousMakeEnabled);
         _continuousToggle.gameObject.SetActive(true);
+    }
+
+    private void EnsureBatchMakeButton(MakeSubPageMake page)
+    {
+        if (page == null)
+            return;
+
+        var confirmButton = Traverse.Create(page).Field("buttonConfirm").GetValue<CButton>();
+        if (confirmButton == null)
+            return;
+
+        var confirmRect = confirmButton.transform as RectTransform;
+        if (confirmRect == null)
+            return;
+
+        if (_batchMakeButton == null)
+        {
+            var buttonObj = Instantiate(confirmButton.gameObject);
+            buttonObj.name = "BetterTaiwuScrollBatchMakeButton";
+            _batchMakeButton = buttonObj.GetComponent<CButton>() ?? buttonObj.GetComponentInChildren<CButton>(true);
+            if (_batchMakeButton == null)
+            {
+                Destroy(buttonObj);
+                return;
+            }
+
+            _batchMakeButton.ClearAndAddListener(OnBatchMakeButtonClick);
+            SetButtonText(buttonObj, "批量制作");
+            (buttonObj.GetComponent<ButtonTextOverride>() ?? buttonObj.AddComponent<ButtonTextOverride>()).SetText("批量制作");
+            ConfigureBatchMakeButtonTooltip(buttonObj);
+        }
+
+        var buttonRect = _batchMakeButton.transform as RectTransform;
+        if (buttonRect == null)
+            return;
+
+        if (buttonRect.parent != confirmRect.parent)
+            buttonRect.SetParent(confirmRect.parent, false);
+
+        buttonRect.anchorMin = confirmRect.anchorMin;
+        buttonRect.anchorMax = confirmRect.anchorMax;
+        buttonRect.pivot = confirmRect.pivot;
+        buttonRect.sizeDelta = new Vector2(ContinuousToggleWidth, ContinuousToggleHeight);
+        buttonRect.anchoredPosition = confirmRect.anchoredPosition + new Vector2(0f, ContinuousToggleOffsetY);
+        buttonRect.localScale = Vector3.one;
+        buttonRect.SetAsLastSibling();
+        _batchMakeButton.interactable = confirmButton.interactable;
+        _batchMakeButton.gameObject.SetActive(true);
     }
 
     private void EnsureSettingsButton()
@@ -263,8 +324,38 @@ internal sealed class ContinuousMakeUiController : MonoBehaviour
 
     private void OnContinuousToggleChanged(bool isOn)
     {
-        ContinuousMakeSettingsStore.Current.ContinuousMakeEnabled = isOn;
-        ContinuousMakeSettingsStore.Save();
+        var settings = ContinuousMakeSettingsStore.Use(_view);
+        settings.ContinuousMakeEnabled = isOn;
+        ContinuousMakeSettingsStore.Save(_view);
+    }
+
+    private void OnBatchMakeButtonClick()
+    {
+        var page = GetActiveMakePage();
+        if (page == null)
+            return;
+
+        var confirmButton = Traverse.Create(page).Field("buttonConfirm").GetValue<CButton>();
+        if (confirmButton == null || !confirmButton.gameObject.activeInHierarchy || !confirmButton.interactable)
+            return;
+
+        ContinuousMakeExecutionController.RequestOneShotBatchMake(_view);
+        try
+        {
+            var method = AccessTools.Method(typeof(MakeSubPageMake), "OnClickButtonConfirm");
+            if (method == null)
+            {
+                ContinuousMakeExecutionController.CancelOneShotBatchMake(_view);
+                return;
+            }
+
+            method.Invoke(page, Array.Empty<object>());
+        }
+        catch (Exception ex)
+        {
+            ContinuousMakeExecutionController.CancelOneShotBatchMake(_view);
+            Debug.LogWarning("[BetterTaiwuScroll] Failed to start batch make by button: " + ex);
+        }
     }
 
     private static TextMeshProUGUI CreateText(RectTransform parent, string text, float fontSize, TextAlignmentOptions alignment, Vector2 anchorMin, Vector2 anchorMax, Vector2 offsetMin, Vector2 offsetMax)
@@ -379,6 +470,26 @@ internal sealed class ContinuousMakeUiController : MonoBehaviour
             {
                 "连续制作设置",
                 "打开连续制作的设置界面。"
+            };
+        }
+    }
+
+    private static void ConfigureBatchMakeButtonTooltip(GameObject buttonObj)
+    {
+        var tooltips = buttonObj.GetComponentsInChildren<TooltipInvoker>(true);
+        foreach (var tooltip in tooltips)
+        {
+            if (tooltip == null)
+                continue;
+
+            tooltip.enabled = true;
+            tooltip.Type = TipType.Simple;
+            tooltip.IsLanguageKey = false;
+            tooltip.NeedRefresh = false;
+            tooltip.PresetParam = new[]
+            {
+                "批量制作",
+                "按照连续制作设置从当前制作开始批量制作。"
             };
         }
     }

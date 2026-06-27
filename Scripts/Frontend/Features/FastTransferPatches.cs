@@ -1,8 +1,10 @@
 #nullable disable
 
 using System;
+using Game.Components.Item;
 using FrameWork;
 using Game.Components.ListStyleGeneralScroll.Item;
+using GameData.Domains.Item;
 using GameData.Domains.Taiwu.ExchangeSystem;
 using HarmonyLib;
 using UnityEngine;
@@ -82,6 +84,25 @@ internal static class ViewShopFastTransferTargetItemPatch
     }
 }
 
+[HarmonyPatch(typeof(ItemListScroll), "SetItemToSelectCountMode")]
+internal static class MultiplyItemListScrollFastTransferSelectCountPatch
+{
+    private static bool Prefix(
+        ItemListScroll __instance,
+        RowItemLine itemView,
+        Action<int> onConfirmSetCount,
+        int limitCount,
+        int minCount)
+    {
+        return !FastTransferSupport.TryHandleMultiplyItemSelectCount(
+            __instance,
+            itemView,
+            onConfirmSetCount,
+            limitCount,
+            minCount);
+    }
+}
+
 internal static class FastTransferSupport
 {
     private enum FastTransferMode
@@ -144,6 +165,45 @@ internal static class FastTransferSupport
         return true;
     }
 
+    internal static bool TryHandleMultiplyItemSelectCount(
+        ItemListScroll scroll,
+        RowItemLine itemView,
+        Action<int> onConfirmSetCount,
+        int limitCount,
+        int minCount)
+    {
+        var mode = GetFastTransferMode();
+        if (mode == FastTransferMode.None)
+            return false;
+
+        if (scroll == null || itemView?.RowItemMain?.Data == null || onConfirmSetCount == null)
+            return false;
+
+        var multiplyList = scroll.GetComponentInParent<MultiplyItemListScroll>();
+        if (multiplyList == null ||
+            !multiplyList.IsMultiItemSelect ||
+            multiplyList.CurrItemOperation != ItemOperationType.EItemOperationType.Disassemble)
+        {
+            return false;
+        }
+
+        var count = GetSelectableCount(itemView.RowItemMain.Data.Amount, limitCount, minCount, mode);
+        if (count <= 0)
+            return false;
+
+        try
+        {
+            onConfirmSetCount(count);
+            RefreshTipNextFrame(itemView);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[BetterTaiwuScroll] Failed to apply fast transfer in multiply item list: " + ex);
+            return false;
+        }
+    }
+
     internal static int GetShopTargetLimitCount(ShopView view, ITradeableContent itemData)
     {
         try
@@ -169,11 +229,21 @@ internal static class FastTransferSupport
 
     private static int GetSelectableCount(ITradeableContent itemData, int limitCount, FastTransferMode mode)
     {
-        if (itemData == null || itemData.Amount <= 0)
+        return itemData == null ? 0 : GetSelectableCount(itemData.Amount, limitCount, 1, mode);
+    }
+
+    private static int GetSelectableCount(int amount, int limitCount, int minCount, FastTransferMode mode)
+    {
+        if (amount <= 0)
             return 0;
 
-        var maxCount = limitCount > 0 ? Mathf.Min(itemData.Amount, limitCount) : itemData.Amount;
-        return mode == FastTransferMode.Half ? Mathf.Max(1, (maxCount + 1) / 2) : maxCount;
+        var maxCount = limitCount > 0 ? Mathf.Min(amount, limitCount) : amount;
+        if (maxCount <= 0)
+            return 0;
+
+        var safeMin = Mathf.Clamp(minCount, 1, maxCount);
+        var count = mode == FastTransferMode.Half ? Mathf.Max(safeMin, (maxCount + 1) / 2) : maxCount;
+        return Mathf.Clamp(count, safeMin, maxCount);
     }
 
     private static void Refresh(ExchangeViewBase view)

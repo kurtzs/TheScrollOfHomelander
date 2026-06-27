@@ -20,7 +20,7 @@ internal sealed class PurchaseOptimizationSettingsPanel : MonoBehaviour
     private const float PanelMinWidth = 1220f;
     private const float PanelMinHeight = 760f;
     private const float ContentWidth = 940f;
-    private const float ContentHeight = 360f;
+    private const float ContentHeight = 500f;
     private const float ContentTopOffset = 150f;
     private const float RowHeight = 52f;
     private const float RowSpacing = 12f;
@@ -42,6 +42,7 @@ internal sealed class PurchaseOptimizationSettingsPanel : MonoBehaviour
     private static PurchaseOptimizationSettingsPanel _current;
     private static bool _requestingArchiveTemplate;
     private static Action _onArchiveTemplateReady;
+    private static RectTransform _cachedArchivePanelSource;
 
     private RectTransform _panelRoot;
     private RectTransform _contentRoot;
@@ -103,7 +104,13 @@ internal sealed class PurchaseOptimizationSettingsPanel : MonoBehaviour
         if (_current != null)
             _current.Close();
 
-        var sourcePanel = FindRevertArchivePanelSource(template);
+        var sourcePanel = _cachedArchivePanelSource;
+        if (sourcePanel == null)
+        {
+            sourcePanel = FindRevertArchivePanelSource(template);
+            _cachedArchivePanelSource = sourcePanel;
+        }
+
         if (sourcePanel == null)
         {
             Debug.LogWarning("[BetterTaiwuScroll] Failed to find purchase settings panel source.");
@@ -422,6 +429,8 @@ internal sealed class PurchaseOptimizationSettingsPanel : MonoBehaviour
         AddBoolRow("不采购涨价的物品", () => PurchaseOptimizationSettingsStore.Current.SkipPriceIncreasedItems, value => PurchaseOptimizationSettingsStore.Current.SkipPriceIncreasedItems = value);
         AddBoolRow("不采购原价的物品", () => PurchaseOptimizationSettingsStore.Current.SkipOriginalPriceItems, value => PurchaseOptimizationSettingsStore.Current.SkipOriginalPriceItems = value);
         AddBoolRow("未解锁精纯商店也采购", () => PurchaseOptimizationSettingsStore.Current.IncludeLimitedPurityLockedLevels, value => PurchaseOptimizationSettingsStore.Current.IncludeLimitedPurityLockedLevels = value);
+        AddBoolRow("批量采购购买药材引子", () => PurchaseOptimizationSettingsStore.Current.IncludeMedicineMaterials, value => PurchaseOptimizationSettingsStore.Current.IncludeMedicineMaterials = value);
+        AddBoolRow("批量采购购买毒物引子", () => PurchaseOptimizationSettingsStore.Current.IncludePoisonMaterials, value => PurchaseOptimizationSettingsStore.Current.IncludePoisonMaterials = value);
 
         RefreshValues();
     }
@@ -546,6 +555,8 @@ internal sealed class PurchaseOptimizationSettingsPanel : MonoBehaviour
                 "不采购涨价的物品" => PurchaseOptimizationSettingsStore.Current.SkipPriceIncreasedItems,
                 "不采购原价的物品" => PurchaseOptimizationSettingsStore.Current.SkipOriginalPriceItems,
                 "未解锁精纯商店也采购" => PurchaseOptimizationSettingsStore.Current.IncludeLimitedPurityLockedLevels,
+                "批量采购购买药材引子" => PurchaseOptimizationSettingsStore.Current.IncludeMedicineMaterials,
+                "批量采购购买毒物引子" => PurchaseOptimizationSettingsStore.Current.IncludePoisonMaterials,
                 _ => toggle.isOn
             });
         }

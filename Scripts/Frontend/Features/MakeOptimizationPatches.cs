@@ -24,7 +24,7 @@ internal static class MakeConfirmPatch
             || !Plugin.IsAutoSelectMaterialEnabledForLifeSkill(view.CurLifeSkillType))
             return;
 
-        if (ContinuousMakeUiController.IsContinuousMakeEnabled)
+        if (ContinuousMakeUiController.IsContinuousMakeEnabledFor(view))
             return;
 
         WaitingPages.Add(__instance);
@@ -58,8 +58,10 @@ internal static class MakeRefreshPanelPatch
         if (firstMaterial == null)
             yield break;
 
+        var nativeOptions = ContinuousMakeExecutionController.MakePageNativeOptionSnapshot.Capture(page);
         if (!ClickMaterialListItem(page, firstMaterial))
             AccessTools.Method(typeof(MakeSubPageMake), "SelectMaterial")?.Invoke(page, new object[] { firstMaterial, false });
+        nativeOptions.Restore(page);
 
         yield return null;
         if (Plugin.EnableMaxProductCount)
@@ -153,6 +155,9 @@ internal static class MakeSelectMaterialPatch
         if (!Plugin.IsEnabledForLifeSkill(view.CurLifeSkillType))
             return;
 
+        if (ContinuousMakeExecutionController.IsSelectingMaterialForContinuation)
+            return;
+
         __instance.StartCoroutine(ApplyAfterUiRefresh(__instance));
     }
 
@@ -175,6 +180,9 @@ internal static class MakeSelectMaterialPatch
 
     internal static void SetMakeCountToMax(MakeSubPageMake page)
     {
+        if (!HasValidMakeSubType(page))
+            return;
+
         var maxMakeCount = Traverse.Create(page).Field("_maxMakeCount").GetValue<int>();
         if (maxMakeCount <= 1)
             return;
@@ -210,16 +218,41 @@ internal static class MakeSelectMaterialPatch
         var minValueProperty = sliderType.GetProperty("minValue", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         var maxValueProperty = sliderType.GetProperty("maxValue", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         var valueProperty = sliderType.GetProperty("value", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        if (valueProperty == null)
+        var setValueWithoutNotifyMethod = sliderType.GetMethod("SetValueWithoutNotify", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new[] { typeof(float) }, null);
+        if (valueProperty == null && setValueWithoutNotifyMethod == null)
             return;
 
         var sliderMin = minValueProperty != null ? Convert.ToSingle(minValueProperty.GetValue(slider, null)) : 1f;
         var sliderMax = maxValueProperty != null ? Convert.ToSingle(maxValueProperty.GetValue(slider, null)) : count;
         var targetValue = Mathf.Clamp(count, Mathf.Max(1, (int)sliderMin), Math.Max(1, (int)sliderMax));
-        valueProperty.SetValue(slider, (float)targetValue, null);
+
+        if (setValueWithoutNotifyMethod != null)
+            setValueWithoutNotifyMethod.Invoke(slider, new object[] { (float)targetValue });
+        else
+            valueProperty.SetValue(slider, (float)targetValue, null);
+
         Traverse.Create(page).Field("_makeCount").SetValue((short)targetValue);
         Traverse.Create(page).Method("OnSliderMakeCountValueChanged", (float)targetValue).GetValue();
         Traverse.Create(page).Method("RefreshMakeCount").GetValue();
+    }
+
+    private static bool HasValidMakeSubType(MakeSubPageMake page)
+    {
+        if (page == null)
+            return false;
+
+        var makeItemSubTypeId = Traverse.Create(page).Field("_makeItemSubTypeId").GetValue<short>();
+        if (makeItemSubTypeId < 0)
+            return false;
+
+        try
+        {
+            return Config.MakeItemSubType.Instance[makeItemSubTypeId] != null;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     internal static ViewMake GetParentView(MakeSubPageMake page)
@@ -236,7 +269,7 @@ internal static class ViewMakeGetAutoSelectToolPatch
         if (__instance == null || !Plugin.EnableBestTool || !Plugin.IsEnabledForLifeSkill(__instance.CurLifeSkillType))
             return;
 
-        var continuousMode = ContinuousMakeUiController.IsContinuousMakeEnabled;
+        var continuousMode = ContinuousMakeUiController.IsContinuousMakeEnabledFor(__instance);
         var toolList = Traverse.Create(__instance).Field(continuousMode ? "_allToolList" : "_toolList").GetValue() as IEnumerable;
         if (toolList == null)
             return;
@@ -255,7 +288,7 @@ internal static class ViewMakeGetAutoSelectToolPatch
     private static ItemDisplayData GetDefaultBestTool(ViewMake view, IEnumerable toolList)
     {
         ItemDisplayData bestTool = null;
-        var settings = ContinuousMakeSettingsStore.Current;
+        var settings = ContinuousMakeSettingsStore.GetFor(view);
         var highGradeFirst = settings.ToolGradePriority == 0;
         if (!highGradeFirst && TryGetAvailableBareHandTool(view, out var bareHandTool) && settings.AllowBareHand)
             return bareHandTool;
@@ -280,7 +313,7 @@ internal static class ViewMakeGetAutoSelectToolPatch
 
     private static ItemDisplayData GetContinuousMakeTool(ViewMake view, IEnumerable toolList)
     {
-        var settings = ContinuousMakeSettingsStore.Current;
+        var settings = ContinuousMakeSettingsStore.GetFor(view);
         ItemDisplayData bestTool = null;
         var highGradeFirst = settings.ToolGradePriority == 0;
 
@@ -295,7 +328,7 @@ internal static class ViewMakeGetAutoSelectToolPatch
             if (ViewMake.IsEmptyTool(tool))
                 continue;
 
-            if (!ContinuousMakeSettingsStore.IsSourceAllowed(tool.ItemSourceTypeEnum))
+            if (!ContinuousMakeSettingsStore.IsSourceAllowed(view.CurLifeSkillType, tool.ItemSourceTypeEnum))
                 continue;
 
             if (!IsToolAvailable(view, tool))

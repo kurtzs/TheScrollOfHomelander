@@ -2,12 +2,120 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text;
 using HarmonyLib;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
 namespace BetterTaiwuScroll.Frontend;
+
+[HarmonyPatch(typeof(Game.Views.Exchange.ViewExchangeBase), "OnSelfItemRender")]
+internal static class ExchangeSelfItemTextColorPatch
+{
+    private static void Postfix(
+        Game.Views.Exchange.ViewExchangeBase __instance,
+        GameData.Domains.Item.Display.ITradeableContent itemData,
+        Game.Components.ListStyleGeneralScroll.Item.RowItemLine rowItemLine)
+    {
+        ExchangeItemTextColorHelper.Apply(__instance, rowItemLine);
+    }
+}
+
+[HarmonyPatch(typeof(Game.Views.Exchange.ViewExchangeBase), "OnTargetItemRender")]
+internal static class ExchangeTargetItemTextColorPatch
+{
+    private static void Postfix(
+        Game.Views.Exchange.ViewExchangeBase __instance,
+        GameData.Domains.Item.Display.ITradeableContent itemData,
+        Game.Components.ListStyleGeneralScroll.Item.RowItemLine rowItemLine)
+    {
+        ExchangeItemTextColorHelper.Apply(__instance, rowItemLine);
+    }
+}
+
+[HarmonyPatch(typeof(Game.Views.Exchange.ViewExchangeBase), "OnExchangingTargetItemRender")]
+internal static class ExchangeTargetExchangedItemTextColorPatch
+{
+    private static void Postfix(
+        Game.Views.Exchange.ViewExchangeBase __instance,
+        GameData.Domains.Item.Display.ITradeableContent itemData,
+        Game.Components.ListStyleGeneralScroll.Item.RowItemLine rowItemLine)
+    {
+        ExchangeItemTextColorHelper.Apply(__instance, rowItemLine);
+    }
+}
+
+internal static class ExchangeItemTextColorHelper
+{
+    private static readonly Color ItemInfoTextColor = new(1f, 1f, 1f, 1f);
+
+    internal static void Apply(
+        Game.Views.Exchange.ViewExchangeBase view,
+        Game.Components.ListStyleGeneralScroll.Item.RowItemLine rowItemLine)
+    {
+        if (!IsEnabledFor(view) || rowItemLine == null)
+        {
+            return;
+        }
+
+        var cache = rowItemLine.GetComponent<ExchangeItemTextColorCache>()
+            ?? rowItemLine.gameObject.AddComponent<ExchangeItemTextColorCache>();
+
+        foreach (var group in cache.CanvasGroups)
+        {
+            if (group != null && group.alpha < 1f)
+                group.alpha = 1f;
+        }
+
+        foreach (var text in cache.Texts)
+        {
+            if (text == null)
+                continue;
+
+            var color = text.color;
+            var wasOverrideColorTags = text.overrideColorTags;
+            text.overrideColorTags = false;
+            text.alpha = 1f;
+            text.canvasRenderer.SetAlpha(1f);
+            if (wasOverrideColorTags || IsDimNeutralText(color))
+                text.color = ItemInfoTextColor;
+            else if (color.a < 1f)
+                text.color = new Color(color.r, color.g, color.b, 1f);
+        }
+    }
+
+    private static bool IsEnabledFor(Game.Views.Exchange.ViewExchangeBase view)
+    {
+        return view switch
+        {
+            Game.Views.Exchange.ViewShop => Plugin.EnableShopSelfItemTextColor,
+            Game.Views.Exchange.ViewShopGift => Plugin.EnableShopGiftSelfItemTextColor,
+            Game.Views.Exchange.ViewSettlementShop => Plugin.EnableSettlementShopSelfItemTextColor,
+            Game.Views.Exchange.ViewWarehouse => Plugin.EnableWarehouseSelfItemTextColor,
+            Game.Views.Exchange.ViewExchangeBook => Plugin.EnableExchangeBookSelfItemTextColor,
+            Game.Views.Exchange.ViewExchange => Plugin.EnableExchangeSelfItemTextColor,
+            _ => false,
+        };
+    }
+
+    private static bool IsDimNeutralText(Color color)
+    {
+        var max = Mathf.Max(color.r, color.g, color.b);
+        var min = Mathf.Min(color.r, color.g, color.b);
+        return max - min < 0.08f && max < 0.9f;
+    }
+}
+
+internal sealed class ExchangeItemTextColorCache : MonoBehaviour
+{
+    private CanvasGroup[] _canvasGroups;
+    private TMP_Text[] _texts;
+
+    internal CanvasGroup[] CanvasGroups => _canvasGroups ??= GetComponentsInChildren<CanvasGroup>(true);
+
+    internal TMP_Text[] Texts => _texts ??= GetComponentsInChildren<TMP_Text>(true);
+}
 
 [HarmonyPatch(typeof(Game.Components.SortAndFilter.SortButtonGroup), "RefreshAll")]
 internal static class CompactItemSortButtonGroupPatch
@@ -57,6 +165,10 @@ internal static class CompactItemSortButtonGroupPatch
     private static readonly HashSet<string> TeamSortLabels = new()
     {
         "名称",
+        "品阶",
+        "行为",
+        "赋性",
+        "身份",
         "年龄",
         "健康",
         "伤势",
@@ -90,7 +202,18 @@ internal static class CompactItemSortButtonGroupPatch
         "佛学",
         "厨艺",
         "杂学",
+        "合道",
         "成长",
+        "食材",
+        "木材",
+        "金铁",
+        "玉石",
+        "织物",
+        "药材",
+        "银钱",
+        "威望",
+        "负重",
+        "行囊",
         "内功",
         "身法",
         "绝技",
@@ -130,9 +253,16 @@ internal static class CompactItemSortButtonGroupPatch
 
         var topGap = HasVisibleFilterSummary(__instance) ? CompactTopGapWithSummary : CompactTopGap;
         var preferSingleRow = isTeamSortGroup || activeCount <= PreferSingleRowMaxButtonCount;
-        ApplyCompactLayout(__instance.transform as RectTransform, itemRoot, topGap, preferSingleRow);
+        var availableWidth = GetAvailableWidth(itemRoot, allowFullAncestorWidth: true);
+        var signature = BuildLayoutSignature(itemRoot, activeCount, isTeamSortGroup, topGap, preferSingleRow, availableWidth);
+        var state = CompactSortButtonLayoutState.GetOrAdd(__instance);
+        if (state != null && state.IsApplied(signature))
+            return true;
+
+        ApplyCompactLayout(__instance.transform as RectTransform, itemRoot, topGap, preferSingleRow, availableWidth);
+        state?.MarkApplied(signature);
         if (scheduleDelayed)
-            CompactSortButtonLayoutState.GetOrAdd(__instance)?.Schedule();
+            state?.Schedule();
         return true;
     }
 
@@ -189,10 +319,9 @@ internal static class CompactItemSortButtonGroupPatch
         return component != null && component.GetComponentInParent<Game.Views.CharacterMenu.Team.ViewCharacterMenuTeam>(true) != null;
     }
 
-    private static void ApplyCompactLayout(RectTransform sortGroupRect, RectTransform itemRoot, float topGap, bool preferSingleRow)
+    private static void ApplyCompactLayout(RectTransform sortGroupRect, RectTransform itemRoot, float topGap, bool preferSingleRow, float availableWidth)
     {
         var activeCount = GetActiveChildCount(itemRoot);
-        var availableWidth = GetAvailableWidth(itemRoot, allowFullAncestorWidth: true);
         var columns = preferSingleRow
             ? CalculateSingleRowColumnCount(availableWidth, activeCount)
             : CalculateColumnCount(availableWidth, activeCount);
@@ -290,6 +419,47 @@ internal static class CompactItemSortButtonGroupPatch
             LayoutRebuilder.ForceRebuildLayoutImmediate(sortGroupRect);
     }
 
+    private static string BuildLayoutSignature(
+        RectTransform itemRoot,
+        int activeCount,
+        bool isTeamSortGroup,
+        float topGap,
+        bool preferSingleRow,
+        float availableWidth)
+    {
+        var builder = new StringBuilder(128);
+        builder.Append(activeCount).Append('|')
+            .Append(isTeamSortGroup ? 1 : 0).Append('|')
+            .Append(Mathf.RoundToInt(topGap)).Append('|')
+            .Append(preferSingleRow ? 1 : 0).Append('|')
+            .Append(Mathf.RoundToInt(availableWidth)).Append('|')
+            .Append(itemRoot == null ? 0 : itemRoot.childCount);
+
+        if (itemRoot == null)
+            return builder.ToString();
+
+        for (var i = 0; i < itemRoot.childCount; i++)
+        {
+            var child = itemRoot.GetChild(i);
+            builder.Append('|').Append(child != null && child.gameObject.activeSelf ? 1 : 0).Append(':');
+            if (child == null)
+                continue;
+
+            var labels = child.GetComponentsInChildren<TextMeshProUGUI>(true);
+            for (var j = 0; j < labels.Length; j++)
+            {
+                var text = labels[j] == null ? string.Empty : labels[j].text?.Trim();
+                if (!string.IsNullOrEmpty(text))
+                {
+                    builder.Append(text);
+                    break;
+                }
+            }
+        }
+
+        return builder.ToString();
+    }
+
     private static bool HasVisibleFilterSummary(Game.Components.SortAndFilter.SortButtonGroup sortButtonGroup)
     {
         var owner = sortButtonGroup == null ? null : sortButtonGroup.GetComponentInParent<SortAndFilter>(true);
@@ -375,6 +545,7 @@ internal sealed class CompactSortButtonLayoutState : MonoBehaviour
 
     private Game.Components.SortAndFilter.SortButtonGroup _owner;
     private int _remainingFrames;
+    private string _appliedSignature;
 
     internal static CompactSortButtonLayoutState GetOrAdd(Game.Components.SortAndFilter.SortButtonGroup owner)
     {
@@ -392,6 +563,16 @@ internal sealed class CompactSortButtonLayoutState : MonoBehaviour
     internal void Schedule()
     {
         _remainingFrames = RefreshFrames;
+    }
+
+    internal bool IsApplied(string signature)
+    {
+        return !string.IsNullOrEmpty(signature) && signature == _appliedSignature;
+    }
+
+    internal void MarkApplied(string signature)
+    {
+        _appliedSignature = signature;
     }
 
     private void LateUpdate()
@@ -430,6 +611,7 @@ internal static class SimplifiedFilterToggleGroupLayoutPatch
     private static void Postfix(Game.Components.SortAndFilter.ToggleGroupLine __instance)
     {
         SimplifiedFilterToggleVisual.ApplyToggleGroupLayout(__instance);
+        InventorySearchBoxOptimizationSupport.EnsureToggleLineSearchBox(__instance);
     }
 }
 
@@ -636,6 +818,7 @@ internal sealed class SimplifiedFilterToggleState : MonoBehaviour
     private bool _hasOriginalLayout;
     private bool _hasOriginalTooltips;
     private bool _isSimplified;
+    private int _applyFrames;
 
     internal void SetText(string text)
     {
@@ -683,17 +866,22 @@ internal sealed class SimplifiedFilterToggleState : MonoBehaviour
         EnsureLabel();
         if (!enabled)
         {
+            _applyFrames = 0;
             RestoreOriginalVisuals();
             return;
         }
 
+        _applyFrames = 2;
         ApplySimplifiedVisuals();
     }
 
     private void LateUpdate()
     {
-        if (_isSimplified && Plugin.EnableSimplifyFilterIcons)
+        if (_isSimplified && Plugin.EnableSimplifyFilterIcons && _applyFrames > 0)
+        {
+            _applyFrames--;
             ApplySimplifiedVisuals();
+        }
     }
 
     private void EnsureLabel()
@@ -740,7 +928,8 @@ internal sealed class SimplifiedFilterToggleState : MonoBehaviour
 
         if (_label != null)
         {
-            ApplyFontFromNearbyLabel(_label);
+            if (_label.font == null)
+                ApplyFontFromNearbyLabel(_label);
             _label.color = TextColor;
             _label.canvasRenderer.SetAlpha(1f);
             _label.SetText(_text);
@@ -1181,7 +1370,7 @@ internal static class SortAndFilterApplyLineStatesInlineFilterPatch
 [HarmonyPatch(typeof(SortAndFilter), "SetDropdownOption")]
 internal static class SortAndFilterSetDropdownOptionInlineFilterPatch
 {
-    private static void Postfix(SortAndFilter __instance)
+    private static void Postfix(SortAndFilter __instance, int lineId, int menuId, int optionIndex)
     {
         InlineFilterButtonsController.Get(__instance)?.Refresh();
     }
@@ -1270,7 +1459,7 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
     private const float InlineButtonSpacing = 4f;
     private const float CompactParentSpacing = 12f;
     private const float CompactSummaryHeight = 34f;
-    private const int DelayedLayoutRefreshFrames = 8;
+    private const int DelayedLayoutRefreshFrames = 2;
 
     private SortAndFilter _owner;
     private FilterPanel _filterPanel;
@@ -1289,6 +1478,8 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
     private bool _entryForceHiddenByInline;
     private bool _originalEntryForceHidden;
     private int _pendingLayoutRefreshFrames;
+    private bool _showRootSectionInPanel;
+    private string _lastRefreshSignature;
 
     internal static InlineFilterButtonsController GetOrAdd(SortAndFilter owner)
     {
@@ -1314,6 +1505,92 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         return Get(owner);
     }
 
+    internal bool MatchesInlineRoot(int lineId, int menuId)
+    {
+        return _hasInlineRoot && _lineId == lineId && _menuId == menuId;
+    }
+
+    internal bool TryGetInlineRoot(out int lineId, out int menuId)
+    {
+        lineId = _lineId;
+        menuId = _menuId;
+        return _hasInlineRoot;
+    }
+
+    internal bool TryGetInlineOptionText(int originalOptionIndex, out string text)
+    {
+        text = string.Empty;
+        if (originalOptionIndex < 0)
+            return _hasInlineRoot;
+
+        if (!TryGetInlineMenuConfig(out var menuConfig))
+            return false;
+
+        var itemConfigs = menuConfig.DropdownConfig.ItemConfigs;
+        if (itemConfigs == null || originalOptionIndex < 0 || originalOptionIndex >= itemConfigs.Count)
+            return false;
+
+        text = NormalizeInlineOptionText(itemConfigs[originalOptionIndex].Text.GetString());
+        return !string.IsNullOrEmpty(text);
+    }
+
+    internal bool TryFindInlineOptionByText(string text, out int originalOptionIndex)
+    {
+        originalOptionIndex = -1;
+        var normalized = NormalizeInlineOptionText(text);
+        if (string.IsNullOrEmpty(normalized))
+            return _hasInlineRoot;
+
+        if (!TryGetInlineMenuConfig(out var menuConfig))
+            return false;
+
+        var itemConfigs = menuConfig.DropdownConfig.ItemConfigs;
+        if (itemConfigs == null)
+            return false;
+
+        foreach (var candidateIndex in _inlineOptionIndexMap)
+        {
+            if (candidateIndex < 0 || candidateIndex >= itemConfigs.Count)
+                continue;
+
+            var candidateText = NormalizeInlineOptionText(itemConfigs[candidateIndex].Text.GetString());
+            if (string.Equals(candidateText, normalized, StringComparison.Ordinal))
+            {
+                originalOptionIndex = candidateIndex;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    internal bool HasInlineOriginalOption(int originalOptionIndex)
+    {
+        if (originalOptionIndex < 0)
+            return _hasInlineRoot;
+
+        return _inlineOptionIndexMap.Contains(originalOptionIndex);
+    }
+
+    private bool TryGetInlineMenuConfig(out DetailedFilterMenuConfig menuConfig)
+    {
+        menuConfig = default;
+        if (!_hasInlineRoot || _owner == null)
+            return false;
+
+        var maybeConfig = _owner.GetMenuConfig(_lineIndex, _menuId);
+        if (!maybeConfig.HasValue)
+            return false;
+
+        menuConfig = maybeConfig.Value;
+        return true;
+    }
+
+    private static string NormalizeInlineOptionText(string text)
+    {
+        return (text ?? string.Empty).Trim();
+    }
+
     internal void Initialize(SortAndFilter owner)
     {
         _owner = owner;
@@ -1330,6 +1607,7 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         if (!Plugin.EnableInlineFilterButtons)
         {
             _hasInlineRoot = false;
+            _lastRefreshSignature = null;
             RestoreEntryButton();
             SetInlineActive(false);
             return;
@@ -1338,6 +1616,7 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         if (ShouldSuppressInlineFilterForMakeList())
         {
             _hasInlineRoot = false;
+            _lastRefreshSignature = null;
             HideEntryButton();
             SetInlineActive(false);
             RefreshOwnerSummary();
@@ -1347,6 +1626,7 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         if (!TryGetRootSection(out var section, out var menuConfig))
         {
             _hasInlineRoot = false;
+            _lastRefreshSignature = null;
             RestoreEntryButton();
             SetInlineActive(false);
             return;
@@ -1368,21 +1648,34 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         if (itemConfigs == null)
         {
             _hasInlineRoot = false;
+            _lastRefreshSignature = null;
             SetInlineActive(false);
             return;
         }
 
         _hasInlineRoot = true;
         var inlineItemConfigs = BuildInlineItemConfigs(section, itemConfigs);
+        var selectedOriginalIndex = _owner.GetInitialSectionState(_lineId, _menuId);
+        var rect = _inlineSection.transform as RectTransform;
+        var panelWidth = rect == null ? 0f : GetInlineAvailableWidth(rect);
+        var refreshSignature = BuildInlineRefreshSignature(section, inlineItemConfigs, selectedOriginalIndex, panelWidth);
+        if (_inlineSection.gameObject.activeInHierarchy && refreshSignature == _lastRefreshSignature)
+        {
+            _inlineSection.SetSelectedIndex(ToDisplayOptionIndex(selectedOriginalIndex), notify: false);
+            FilterMultiSelectSupport.ApplySelectionVisuals(_inlineSection, _owner, _lineId, _menuId);
+            return;
+        }
+
         RefreshInlineFollowUpOptionSet();
         _inlineSection.gameObject.SetActive(true);
         _inlineSection.Setup(_menuId, string.Empty, inlineItemConfigs, OnInlineSelectionChanged);
-        _inlineSection.SetSelectedIndex(ToDisplayOptionIndex(_owner.GetInitialSectionState(_lineId, _menuId)), notify: false);
+        _inlineSection.SetSelectedIndex(ToDisplayOptionIndex(selectedOriginalIndex), notify: false);
         ApplyInlineLayout();
         RequestDelayedLayoutRefresh();
         AfterPanelRefresh();
         RefreshOwnerSummary();
         TuneSummaryAreaLayout();
+        _lastRefreshSignature = refreshSignature;
     }
 
     private void LateUpdate()
@@ -1395,7 +1688,6 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
             EnsureInlineSection();
             ApplyInlineLayout();
             TuneSummaryAreaLayout();
-            ForceRebuildInlineLayoutChain();
         }
 
         _pendingLayoutRefreshFrames--;
@@ -1411,7 +1703,10 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         if (!Plugin.EnableInlineFilterButtons || _owner == null || _filterPanel == null)
             return;
 
-        HidePanelRootSection();
+        if (_showRootSectionInPanel)
+            ShowPanelRootSection();
+        else
+            HidePanelRootSection();
         TuneSummaryAreaLayout();
     }
 
@@ -1445,6 +1740,30 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         for (var i = 0; i < itemConfigs.Count; i++)
             _inlineOptionIndexMap.Add(i);
         return itemConfigs;
+    }
+
+    private string BuildInlineRefreshSignature(
+        SortAndFilter.SectionViewData section,
+        List<FilterDropdownItemConfig> itemConfigs,
+        int selectedOriginalIndex,
+        float panelWidth)
+    {
+        var builder = new StringBuilder(128);
+        builder.Append(section.LineId).Append('|')
+            .Append(section.LineIndex).Append('|')
+            .Append(section.MenuId).Append('|')
+            .Append(selectedOriginalIndex).Append('|')
+            .Append(Mathf.RoundToInt(panelWidth)).Append('|')
+            .Append(_hideInlineAllOption ? 1 : 0).Append('|')
+            .Append(itemConfigs == null ? 0 : itemConfigs.Count);
+
+        if (itemConfigs != null)
+        {
+            for (var i = 0; i < itemConfigs.Count; i++)
+                builder.Append('|').Append(itemConfigs[i].Text.GetString());
+        }
+
+        return builder.ToString();
     }
 
     private bool IsMakeToolSection(SortAndFilter.SectionViewData section)
@@ -1946,7 +2265,16 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         if (_owner == null)
             return;
 
-        if (!HasFollowUpSections())
+        if (displayIndex < 0)
+        {
+            _showRootSectionInPanel = true;
+            _owner.OpenFilterPanel();
+            ShowPanelRootSection();
+            return;
+        }
+
+        _showRootSectionInPanel = false;
+        if (!HasFollowUpSectionsForDisplayOption(displayIndex))
         {
             _owner.CloseFilterPanel();
             return;
@@ -1992,12 +2320,27 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         if (_owner == null)
             return;
 
+        _showRootSectionInPanel = false;
         selectedIndex = ToOriginalOptionIndex(selectedIndex);
         _owner.SetDropdownOption(_lineId, _menuId, selectedIndex);
         _owner.CloseFilterPanel();
     }
 
-    private bool HasFollowUpSections()
+    private bool HasFollowUpSectionsForDisplayOption(int displayIndex)
+    {
+        var originalIndex = ToOriginalOptionIndex(displayIndex);
+        if (originalIndex >= 0 && _inlineOptionsWithFollowUpMenus.Contains(originalIndex))
+            return true;
+
+        if (_owner?.Config?.LineConfigs != null
+            && originalIndex >= 0
+            && SimplifiedFilterToggleVisual.HasLineDependingOnToggle(_owner.Config.LineConfigs, _lineId, originalIndex))
+            return true;
+
+        return HasActiveFollowUpSections();
+    }
+
+    private bool HasActiveFollowUpSections()
     {
         foreach (var section in _owner.Sections)
         {
@@ -2026,6 +2369,23 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
             && rootSection != null
             && rootSection != _inlineSection)
             rootSection.gameObject.SetActive(false);
+    }
+
+    private void ShowPanelRootSection()
+    {
+        if (_filterPanel == null)
+            return;
+
+        var sectionMap = Traverse.Create(_filterPanel)
+            .Field("_sectionMap")
+            .GetValue<Dictionary<(int, int), FilterSection>>();
+        if (sectionMap == null)
+            return;
+
+        if (sectionMap.TryGetValue((_lineId, _menuId), out var rootSection)
+            && rootSection != null
+            && rootSection != _inlineSection)
+            rootSection.gameObject.SetActive(true);
     }
 
     private void HideEntryButton()
@@ -2071,7 +2431,10 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         if (_inlineSection != null)
             _inlineSection.gameObject.SetActive(active);
         if (!active)
+        {
             _pendingLayoutRefreshFrames = 0;
+            _showRootSectionInPanel = false;
+        }
     }
 }
 

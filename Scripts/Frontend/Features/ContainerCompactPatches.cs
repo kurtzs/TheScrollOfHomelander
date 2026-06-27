@@ -4,7 +4,10 @@ using System;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using FrameWork.UISystem.Components;
+using FrameWork.UISystem.UIElements;
 using Game.Components.ListStyleGeneralScroll.Item;
+using Game.Views.CharacterMenu;
+using Game.Views.Exchange;
 using HarmonyLib;
 using UnityEngine;
 
@@ -262,35 +265,73 @@ internal static class ContainerCompactPatches
 internal static class ContainerDefaultCardModePatch
 {
     private static readonly FieldInfo IsCardModeField = AccessTools.Field(typeof(ItemListScroll), "_isCardMode");
+    private static readonly FieldInfo UseGroupedScrollField = AccessTools.Field(typeof(ItemListScroll), "useGroupedScroll");
+    private static readonly FieldInfo ScrollField = AccessTools.Field(typeof(ItemListScroll), "scroll");
+    private static readonly FieldInfo GroupedScrollField = AccessTools.Field(typeof(ItemListScroll), "groupedScroll");
     private static readonly FieldInfo CardScrollField = AccessTools.Field(typeof(ItemListScroll), "cardScroll");
     private static readonly FieldInfo BtnSwitchCardModeField = AccessTools.Field(typeof(ItemListScroll), "btnSwitchCardMode");
+    private static readonly FieldInfo DefaultSwitchIndexField = AccessTools.Field(typeof(ItemListScroll), "defaultSwithIndex");
     private static readonly MethodInfo RefreshCardModeMethod = AccessTools.Method(typeof(ItemListScroll), "RefreshCardMode");
-    private static readonly MethodInfo ToggleSetWithoutNotifyMethod = AccessTools.Method(AccessTools.TypeByName("FrameWork.UISystem.UIElements.CToggleGroup"), "SetWithoutNotify");
+    private static readonly MethodInfo SwitchCardModeToggleMethod = AccessTools.Method(typeof(ItemListScroll), "SwitchCardModeToggle", new[] { typeof(int), typeof(int) });
     private static readonly FieldInfo ToggleActiveIndexField = AccessTools.Field(AccessTools.TypeByName("FrameWork.UISystem.UIElements.CToggleGroup"), "_activeIndex");
 
     private static Type _viewCharacterMenuItemsType;
     private static Type _viewExchangeBaseType;
     private static bool _typeLookupDone;
 
+    [HarmonyPrefix]
+    [HarmonyPatch(typeof(ItemListScroll), "Init")]
+    private static void InitPrefix(ItemListScroll __instance)
+    {
+        if (!ShouldUseDefaultCardMode(__instance))
+            return;
+
+        DefaultSwitchIndexField?.SetValue(__instance, 1);
+        NormalizeToggleGroup(BtnSwitchCardModeField?.GetValue(__instance), 1);
+    }
+
     [HarmonyPostfix]
     [HarmonyPatch(typeof(ItemListScroll), "Init")]
     private static void InitPostfix(ItemListScroll __instance)
     {
-        if (!Plugin.EnableContainerCompact || !Plugin.EnableDefaultContainerCardMode || !IsSupportedPage(__instance))
+        if (!ShouldUseDefaultCardMode(__instance))
             return;
 
-        if (IsCardModeField?.GetValue(__instance) is bool isCardMode && isCardMode)
-            return;
+        EnsureDefaultCardMode(__instance);
+    }
 
-        if (CardScrollField != null && CardScrollField.GetValue(__instance) == null)
-            return;
+    internal static bool ShouldUseDefaultCardMode(ItemListScroll instance)
+    {
+        if (instance == null || !Plugin.EnableContainerCompact || !Plugin.EnableDefaultContainerCardMode || !IsSupportedPage(instance))
+            return false;
 
-        IsCardModeField?.SetValue(__instance, true);
-        RefreshCardModeMethod?.Invoke(__instance, null);
+        return CardScrollField == null || CardScrollField.GetValue(instance) != null;
+    }
 
-        var switchToggle = BtnSwitchCardModeField?.GetValue(__instance);
-        if (switchToggle != null && ToggleActiveIndexField != null && ToggleSetWithoutNotifyMethod != null && (int)ToggleActiveIndexField.GetValue(switchToggle) == 0)
-            ToggleSetWithoutNotifyMethod.Invoke(switchToggle, new object[] { 1 });
+    private static void EnsureDefaultCardMode(ItemListScroll instance)
+    {
+        try
+        {
+            if (!(IsCardModeField?.GetValue(instance) is bool isCardMode && isCardMode))
+            {
+                if (SwitchCardModeToggleMethod != null)
+                {
+                    SwitchCardModeToggleMethod.Invoke(instance, new object[] { 1, 0 });
+                }
+                else
+                {
+                    IsCardModeField?.SetValue(instance, true);
+                    RefreshCardModeMethod?.Invoke(instance, null);
+                }
+            }
+
+            SyncModeVisibility(instance);
+            SyncToggleState(instance);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[BetterTaiwuScroll] Failed to apply default card mode: " + ex);
+        }
     }
 
     private static bool IsSupportedPage(ItemListScroll instance)
@@ -323,6 +364,133 @@ internal static class ContainerDefaultCardModePatch
         _typeLookupDone = true;
         _viewCharacterMenuItemsType = AccessTools.TypeByName("Game.Views.CharacterMenu.ViewCharacterMenuItems");
         _viewExchangeBaseType = AccessTools.TypeByName("Game.Views.Exchange.ViewExchangeBase");
+    }
+
+    internal static void SyncModeVisibility(ItemListScroll instance)
+    {
+        if (instance == null)
+            return;
+
+        var isCardMode = IsCardModeField?.GetValue(instance) is bool value && value;
+        var useGroupedScroll = UseGroupedScrollField?.GetValue(instance) is bool grouped && grouped;
+        SetActive(CardScrollField?.GetValue(instance) as Component, isCardMode);
+        SetActive(ScrollField?.GetValue(instance) as Component, !isCardMode && !useGroupedScroll);
+        SetActive(GroupedScrollField?.GetValue(instance) as Component, !isCardMode && useGroupedScroll);
+    }
+
+    internal static void SyncToggleState(ItemListScroll instance)
+    {
+        if (instance == null)
+            return;
+
+        var switchToggle = BtnSwitchCardModeField?.GetValue(instance);
+        if (switchToggle == null)
+            return;
+
+        var isCardMode = IsCardModeField?.GetValue(instance) is bool value && value;
+        var targetIndex = isCardMode ? 1 : 0;
+        NormalizeToggleGroup(switchToggle, targetIndex);
+    }
+
+    internal static bool IsFeatureEnabled()
+    {
+        return Plugin.EnableContainerCompact && Plugin.EnableDefaultContainerCardMode;
+    }
+
+    internal static void SetToggleGroupActiveWithoutNotify(CToggleGroup toggleGroup, int targetIndex)
+    {
+        if (toggleGroup != null)
+            NormalizeToggleGroup(toggleGroup, targetIndex);
+    }
+
+    private static void NormalizeToggleGroup(object switchToggle, int targetIndex)
+    {
+        if (switchToggle == null)
+            return;
+
+        if (switchToggle is CToggleGroup toggleGroup)
+        {
+            var toggles = toggleGroup.GetAll();
+            if (toggles != null)
+            {
+                var effectiveIndex = targetIndex >= 0 && targetIndex < toggles.Count ? targetIndex : 0;
+                for (var i = 0; i < toggles.Count; i++)
+                {
+                    var toggle = toggles[i];
+                    if (toggle != null)
+                        toggle.SetIsOnWithoutNotify(i == effectiveIndex);
+                }
+
+                ToggleActiveIndexField?.SetValue(switchToggle, effectiveIndex);
+                return;
+            }
+        }
+
+        ToggleActiveIndexField?.SetValue(switchToggle, targetIndex);
+    }
+
+    private static void SetActive(Component component, bool active)
+    {
+        if (component != null && component.gameObject.activeSelf != active)
+            component.gameObject.SetActive(active);
+    }
+}
+
+[HarmonyPatch(typeof(ItemListScroll), "RefreshCardMode")]
+internal static class ItemListScrollRefreshCardModeCompactVisibilityPatch
+{
+    private static void Postfix(ItemListScroll __instance)
+    {
+        if (ContainerDefaultCardModePatch.ShouldUseDefaultCardMode(__instance))
+        {
+            ContainerDefaultCardModePatch.SyncModeVisibility(__instance);
+            ContainerDefaultCardModePatch.SyncToggleState(__instance);
+        }
+    }
+}
+
+[HarmonyPatch(typeof(ViewCharacterMenuItems), "Awake")]
+internal static class ViewCharacterMenuItemsDefaultCardModeTogglePatch
+{
+    private static readonly FieldInfo TargetToggleGroupField = AccessTools.Field(typeof(ViewCharacterMenuItems), "targetToggleGroup");
+
+    private static void Prefix(ViewCharacterMenuItems __instance)
+    {
+        if (!ContainerDefaultCardModePatch.IsFeatureEnabled())
+            return;
+
+        ContainerDefaultCardModePatch.SetToggleGroupActiveWithoutNotify(TargetToggleGroupField?.GetValue(__instance) as CToggleGroup, 1);
+    }
+
+    private static void Postfix(ViewCharacterMenuItems __instance)
+    {
+        if (!ContainerDefaultCardModePatch.IsFeatureEnabled())
+            return;
+
+        ContainerDefaultCardModePatch.SetToggleGroupActiveWithoutNotify(TargetToggleGroupField?.GetValue(__instance) as CToggleGroup, 1);
+    }
+}
+
+[HarmonyPatch(typeof(ExchangeContainer), "AddSwitchToggleListener")]
+internal static class ExchangeContainerDefaultCardModeTogglePatch
+{
+    private static void Prefix(ExchangeContainer __instance)
+    {
+        Apply(__instance);
+    }
+
+    private static void Postfix(ExchangeContainer __instance)
+    {
+        Apply(__instance);
+    }
+
+    private static void Apply(ExchangeContainer container)
+    {
+        if (container == null || !ContainerDefaultCardModePatch.IsFeatureEnabled())
+            return;
+
+        ContainerDefaultCardModePatch.SetToggleGroupActiveWithoutNotify(container.targetToggleGroup, 1);
+        ContainerDefaultCardModePatch.SetToggleGroupActiveWithoutNotify(container.selfToggleGroup, 1);
     }
 }
 

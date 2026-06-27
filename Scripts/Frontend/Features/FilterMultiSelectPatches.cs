@@ -202,6 +202,7 @@ internal static class FilterMultiSelectSupport
 
         owner.Config?.OnFilterChanged?.Invoke(lineId);
         Traverse.Create(owner).Method("RefreshSectionsSummaryAndPanel").GetValue();
+        FilterMemoryController.TrySave(owner);
     }
 
     internal static List<int> GetSelectedIndices(SortAndFilter owner, int lineId, int menuId)

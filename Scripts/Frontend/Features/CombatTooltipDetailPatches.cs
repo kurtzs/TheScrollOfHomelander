@@ -14,6 +14,9 @@ internal static class CombatTooltipDetailPatch
 
     private static bool Prefix(TipsFolder __instance)
     {
+        if (!Plugin.EnableCombatTooltipDetail)
+            return true;
+
         if (__instance == null)
             return true;
 

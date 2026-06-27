@@ -26,6 +26,8 @@ public sealed class PurchaseOptimizationSettings
     public bool SkipPriceIncreasedItems = true;
     public bool SkipOriginalPriceItems = false;
     public bool IncludeLimitedPurityLockedLevels = false;
+    public bool IncludeMedicineMaterials = true;
+    public bool IncludePoisonMaterials = false;
 
     internal void Normalize()
     {
@@ -51,7 +53,12 @@ internal static class PurchaseOptimizationSettingsStore
                 if (!File.Exists(path))
                     continue;
 
-                Current = JsonUtility.FromJson<PurchaseOptimizationSettings>(File.ReadAllText(path)) ?? new PurchaseOptimizationSettings();
+                var json = File.ReadAllText(path);
+                Current = JsonUtility.FromJson<PurchaseOptimizationSettings>(json) ?? new PurchaseOptimizationSettings();
+                if (!json.Contains("\"IncludeMedicineMaterials\""))
+                    Current.IncludeMedicineMaterials = true;
+                if (!json.Contains("\"IncludePoisonMaterials\""))
+                    Current.IncludePoisonMaterials = false;
                 break;
             }
         }
@@ -157,6 +164,8 @@ internal static class ShopStockPageSupport
         RefreshOriginalDisabledSourceTooltips(currPage);
         if (shouldShow && !stockToggle.interactable && currPage.GetActiveIndex() == StockPageIndex && view.Exchange != null)
             currPage.Set(0);
+        else if (shouldShow && currPage.GetActiveIndex() == StockPageIndex)
+            ForceStockToggleSelected(currPage, stockToggle);
     }
 
     internal static void SyncStockToggleState(ExchangeViewBase view)
@@ -166,6 +175,14 @@ internal static class ShopStockPageSupport
         var stockToggle = currPage?.Get(StockPageIndex);
         if (stockToggle == null || !stockToggle.gameObject.activeSelf || !stockToggle.interactable)
             return;
+
+        ForceStockToggleSelected(currPage, stockToggle);
+    }
+
+    private static void ForceStockToggleSelected(CToggleGroup currPage, CToggle stockToggle)
+    {
+        if (currPage.GetActiveIndex() != StockPageIndex && stockToggle.isOn)
+            stockToggle.SetIsOnWithoutNotify(false);
 
         currPage.SetWithoutNotify(StockPageIndex);
     }
@@ -210,6 +227,8 @@ internal sealed class PurchaseOptimizationUiController : MonoBehaviour
     private const float BatchOffsetX = -36f;
     private const float BatchOffsetY = -64f * ButtonScale;
     private const int MaterialItemType = 5;
+    private const short MedicineMaterialSubType = 505;
+    private const short PoisonMaterialSubType = 506;
 
     private ShopView _view;
     private CButton _settingsButton;
@@ -368,6 +387,9 @@ internal sealed class PurchaseOptimizationUiController : MonoBehaviour
         if (item.RealKey.ItemType != MaterialItemType)
             return 0;
 
+        if (!IsMaterialSubTypeAllowed(item, settings))
+            return 0;
+
         var grade = GetMaterialConfigGrade(item);
         var highestRawGrade = DisplayGradeToRaw(settings.HighestPurchaseGrade);
         var lowestRawGrade = DisplayGradeToRaw(settings.LowestPurchaseGrade);
@@ -390,6 +412,32 @@ internal sealed class PurchaseOptimizationUiController : MonoBehaviour
         var count = Mathf.Min(remaining, remainingLimitedCount);
         remainingLimitedCount -= count;
         return count;
+    }
+
+    private static bool IsMaterialSubTypeAllowed(ITradeableContent item, PurchaseOptimizationSettings settings)
+    {
+        var subType = GetMaterialSubType(item);
+        return subType switch
+        {
+            MedicineMaterialSubType => settings.IncludeMedicineMaterials,
+            PoisonMaterialSubType => settings.IncludePoisonMaterials,
+            _ => true,
+        };
+    }
+
+    private static short GetMaterialSubType(ITradeableContent item)
+    {
+        if (item == null)
+            return 0;
+
+        try
+        {
+            return Config.Material.Instance[item.RealKey.TemplateId].ItemSubType;
+        }
+        catch
+        {
+            return 0;
+        }
     }
 
     private static sbyte GetMaterialConfigGrade(ITradeableContent item)

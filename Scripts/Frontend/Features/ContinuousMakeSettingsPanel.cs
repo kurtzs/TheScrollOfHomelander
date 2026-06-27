@@ -16,6 +16,9 @@ namespace BetterTaiwuScroll.Frontend;
 [Serializable]
 internal sealed class ContinuousMakeSettings
 {
+    internal const int MinBatchMakeSpeed = 1;
+    internal const int MaxBatchMakeSpeed = 20;
+
     public bool ContinuousMakeEnabled = false;
     public bool IncludeInventory = true;
     public bool IncludePrivateStorage = true;
@@ -25,6 +28,26 @@ internal sealed class ContinuousMakeSettings
     public int ToolGradePriority = 0;
     public bool AllowBareHand = true;
     public bool EnableDurabilityProtection = true;
+    public int BatchMakeSpeed = 1;
+    public int BatchMakeStartMode = 0;
+
+    internal ContinuousMakeSettings Clone()
+    {
+        return new ContinuousMakeSettings
+        {
+            ContinuousMakeEnabled = ContinuousMakeEnabled,
+            IncludeInventory = IncludeInventory,
+            IncludePrivateStorage = IncludePrivateStorage,
+            IncludePublicStorage = IncludePublicStorage,
+            HighestMaterialGrade = HighestMaterialGrade,
+            LowestMaterialGrade = LowestMaterialGrade,
+            ToolGradePriority = ToolGradePriority,
+            AllowBareHand = AllowBareHand,
+            EnableDurabilityProtection = EnableDurabilityProtection,
+            BatchMakeSpeed = BatchMakeSpeed,
+            BatchMakeStartMode = BatchMakeStartMode
+        };
+    }
 
     internal void Normalize()
     {
@@ -34,55 +57,121 @@ internal sealed class ContinuousMakeSettings
             LowestMaterialGrade = HighestMaterialGrade;
 
         ToolGradePriority = Mathf.Clamp(ToolGradePriority, 0, 1);
+        BatchMakeSpeed = Mathf.Clamp(BatchMakeSpeed, MinBatchMakeSpeed, MaxBatchMakeSpeed);
+        BatchMakeStartMode = Mathf.Clamp(BatchMakeStartMode, 0, 1);
     }
 }
 
 internal static class ContinuousMakeSettingsStore
 {
-    private const string FileName = "ContinuousMakeSettings.json";
+    private const string LegacyFileName = "ContinuousMakeSettings.json";
+    private const string FileNamePrefix = "ContinuousMakeSettings_";
+    private const sbyte NoActiveLifeSkillType = sbyte.MinValue;
 
+    private static readonly Dictionary<sbyte, ContinuousMakeSettings> SettingsByLifeSkillType = new();
+    private static sbyte _activeLifeSkillType = NoActiveLifeSkillType;
     internal static ContinuousMakeSettings Current { get; private set; } = new ContinuousMakeSettings();
 
     internal static void Load()
     {
+        Current = GetFor(_activeLifeSkillType);
+    }
+
+    internal static void Load(ViewMake view)
+    {
+        Use(view);
+    }
+
+    internal static ContinuousMakeSettings Use(ViewMake view)
+    {
+        return Use(view == null ? NoActiveLifeSkillType : view.CurLifeSkillType);
+    }
+
+    internal static ContinuousMakeSettings Use(sbyte lifeSkillType)
+    {
+        _activeLifeSkillType = lifeSkillType;
+        Current = GetFor(lifeSkillType);
+        return Current;
+    }
+
+    internal static ContinuousMakeSettings GetFor(ViewMake view)
+    {
+        return GetFor(view == null ? _activeLifeSkillType : view.CurLifeSkillType);
+    }
+
+    internal static ContinuousMakeSettings GetFor(sbyte lifeSkillType)
+    {
+        if (SettingsByLifeSkillType.TryGetValue(lifeSkillType, out var settings))
+            return settings;
+
+        settings = LoadFor(lifeSkillType);
+        SettingsByLifeSkillType[lifeSkillType] = settings;
+        return settings;
+    }
+
+    private static ContinuousMakeSettings LoadFor(sbyte lifeSkillType)
+    {
         try
         {
-            foreach (var path in GetSettingsPathCandidates())
+            foreach (var path in GetSettingsPathCandidates(lifeSkillType))
             {
                 if (!File.Exists(path))
                     continue;
 
-                Current = JsonUtility.FromJson<ContinuousMakeSettings>(File.ReadAllText(path)) ?? new ContinuousMakeSettings();
-                break;
+                var settings = JsonUtility.FromJson<ContinuousMakeSettings>(File.ReadAllText(path)) ?? new ContinuousMakeSettings();
+                settings.Normalize();
+                return settings;
             }
         }
         catch (Exception ex)
         {
-            Debug.LogWarning("[BetterTaiwuScroll] Failed to load continuous make settings: " + ex);
-            Current = new ContinuousMakeSettings();
+            Debug.LogWarning("[BetterTaiwuScroll] Failed to load continuous make settings for life skill "
+                + lifeSkillType + ": " + ex);
         }
 
-        Current.Normalize();
+        var fallback = new ContinuousMakeSettings();
+        fallback.Normalize();
+        return fallback;
     }
 
     internal static void Save()
     {
+        Save(_activeLifeSkillType);
+    }
+
+    internal static void Save(ViewMake view)
+    {
+        Save(view == null ? _activeLifeSkillType : view.CurLifeSkillType);
+    }
+
+    internal static void Save(sbyte lifeSkillType)
+    {
         try
         {
-            Current.Normalize();
-            var path = GetSettingsPath();
+            var settings = GetFor(lifeSkillType);
+            settings.Normalize();
+            if (lifeSkillType == _activeLifeSkillType)
+                Current = settings;
+
+            var path = GetSettingsPath(lifeSkillType);
             Directory.CreateDirectory(Path.GetDirectoryName(path));
-            File.WriteAllText(path, JsonUtility.ToJson(Current, true));
+            File.WriteAllText(path, JsonUtility.ToJson(settings, true));
         }
         catch (Exception ex)
         {
-            Debug.LogWarning("[BetterTaiwuScroll] Failed to save continuous make settings: " + ex);
+            Debug.LogWarning("[BetterTaiwuScroll] Failed to save continuous make settings for life skill "
+                + lifeSkillType + ": " + ex);
         }
     }
 
     internal static bool IsSourceAllowed(GameData.Domains.Taiwu.ItemSourceType sourceType)
     {
-        var settings = Current;
+        return IsSourceAllowed(_activeLifeSkillType, sourceType);
+    }
+
+    internal static bool IsSourceAllowed(sbyte lifeSkillType, GameData.Domains.Taiwu.ItemSourceType sourceType)
+    {
+        var settings = GetFor(lifeSkillType);
         return sourceType switch
         {
             GameData.Domains.Taiwu.ItemSourceType.Inventory => settings.IncludeInventory,
@@ -92,26 +181,35 @@ internal static class ContinuousMakeSettingsStore
         };
     }
 
-    private static string GetSettingsPath()
+    private static string GetSettingsPath(sbyte lifeSkillType)
     {
-        return ModUserDataPaths.GetFilePath(FileName);
+        if (lifeSkillType == NoActiveLifeSkillType)
+            return ModUserDataPaths.GetFilePath(LegacyFileName);
+
+        return ModUserDataPaths.GetFilePath(FileNamePrefix + (int)lifeSkillType + ".json");
     }
 
-    private static IEnumerable<string> GetSettingsPathCandidates()
+    private static IEnumerable<string> GetSettingsPathCandidates(sbyte lifeSkillType)
     {
-        yield return GetSettingsPath();
+        yield return GetSettingsPath(lifeSkillType);
+        if (lifeSkillType != NoActiveLifeSkillType)
+            yield return ModUserDataPaths.GetFilePath(LegacyFileName);
     }
 }
 
 internal static class NativeContinuousMakeSettingsTemplates
 {
     internal static SysSetting.BoolSettingItem BoolSettingPrefab;
+    internal static SysSetting.IntSettingItem IntSettingPrefab;
     internal static SysSetting.EnumSettingItem EnumSettingPrefab;
     internal static SysSetting.SwitchButtonSettingItem SwitchButtonSettingPrefab;
 
     private static bool _requesting;
 
-    internal static bool Ready => BoolSettingPrefab != null && EnumSettingPrefab != null && SwitchButtonSettingPrefab != null;
+    internal static bool Ready => BoolSettingPrefab != null
+        && IntSettingPrefab != null
+        && EnumSettingPrefab != null
+        && SwitchButtonSettingPrefab != null;
 
     internal static void Request(Action onReady)
     {
@@ -156,6 +254,7 @@ internal static class NativeContinuousMakeSettingsTemplates
 
         var traverse = Traverse.Create(template);
         BoolSettingPrefab ??= traverse.Field("boolSettingPrefab").GetValue<SysSetting.BoolSettingItem>();
+        IntSettingPrefab ??= traverse.Field("intSettingPrefab").GetValue<SysSetting.IntSettingItem>();
         EnumSettingPrefab ??= traverse.Field("enumSettingPrefab").GetValue<SysSetting.EnumSettingItem>();
         SwitchButtonSettingPrefab ??= traverse.Field("switchButtonSettingPrefab").GetValue<SysSetting.SwitchButtonSettingItem>();
     }
@@ -169,7 +268,7 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
     private const float PanelMinWidth = 1220f;
     private const float PanelMinHeight = 820f;
     private const float ContentWidth = 940f;
-    private const float ContentHeight = 450f;
+    private const float ContentHeight = 520f;
     private const float ContentTopOffset = 138f;
     private const float RowHeight = 48f;
     private const float RowSpacing = 8f;
@@ -194,20 +293,29 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
         "低品"
     };
 
+    private static readonly string[] BatchMakeStartModeNames =
+    {
+        "勾选模式",
+        "按钮模式"
+    };
+
     private static ContinuousMakeSettingsPanel _current;
     private static bool _requestingArchiveTemplate;
     private static Action _onArchiveTemplateReady;
+    private static RectTransform _cachedArchivePanelSource;
 
     private RectTransform _panelRoot;
     private RectTransform _contentRoot;
     private Action _escHandler;
     private readonly List<Action> _controlRebinds = new List<Action>();
+    private sbyte _lifeSkillType;
     private bool _syncing;
     private bool _masked;
 
     internal static void Show(ViewMake owner)
     {
-        ContinuousMakeSettingsStore.Load();
+        var lifeSkillType = owner == null ? sbyte.MinValue : owner.CurLifeSkillType;
+        ContinuousMakeSettingsStore.Use(lifeSkillType);
 
         if (!NativeContinuousMakeSettingsTemplates.Ready)
         {
@@ -215,7 +323,7 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
             return;
         }
 
-        EnsureArchiveTemplate(() => CreateFromRevertArchiveTemplate(UIElement.RevertArchive.UiBase.gameObject));
+        EnsureArchiveTemplate(() => CreateFromRevertArchiveTemplate(UIElement.RevertArchive.UiBase.gameObject, lifeSkillType));
     }
 
     internal static void Preload()
@@ -250,7 +358,7 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
         });
     }
 
-    private static void CreateFromRevertArchiveTemplate(GameObject template)
+    private static void CreateFromRevertArchiveTemplate(GameObject template, sbyte lifeSkillType)
     {
         if (template == null)
             return;
@@ -258,7 +366,13 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
         if (_current != null)
             _current.Close();
 
-        var sourcePanel = FindRevertArchivePanelSource(template);
+        var sourcePanel = _cachedArchivePanelSource;
+        if (sourcePanel == null)
+        {
+            sourcePanel = FindRevertArchivePanelSource(template);
+            _cachedArchivePanelSource = sourcePanel;
+        }
+
         if (sourcePanel == null)
         {
             Debug.LogWarning("[BetterTaiwuScroll] Failed to find revert archive panel source.");
@@ -274,7 +388,9 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
         panelObj.SetActive(false);
 
         var panel = panelObj.AddComponent<ContinuousMakeSettingsPanel>();
+        panel._lifeSkillType = lifeSkillType;
         panel._panelRoot = panelObj.transform as RectTransform;
+        ContinuousMakeSettingsStore.Use(lifeSkillType);
         panel.ConfigureClone();
         panel.Build();
         panel.ConfigureInputLayer();
@@ -286,6 +402,8 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
         panel.Mask();
         _current = panel;
     }
+
+    private ContinuousMakeSettings Settings => ContinuousMakeSettingsStore.GetFor(_lifeSkillType);
 
     private void ConfigureClone()
     {
@@ -575,14 +693,16 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
         if (_contentRoot == null)
             return;
 
-        AddBoolRow("是否包括行囊", () => ContinuousMakeSettingsStore.Current.IncludeInventory, value => ContinuousMakeSettingsStore.Current.IncludeInventory = value);
-        AddBoolRow("是否包括私库", () => ContinuousMakeSettingsStore.Current.IncludePrivateStorage, value => ContinuousMakeSettingsStore.Current.IncludePrivateStorage = value);
-        AddBoolRow("是否包括公库", () => ContinuousMakeSettingsStore.Current.IncludePublicStorage, value => ContinuousMakeSettingsStore.Current.IncludePublicStorage = value);
-        AddDropdownRow("允许使用的最高引子品级", GradeNames, () => GradeToIndex(ContinuousMakeSettingsStore.Current.HighestMaterialGrade), OnHighestGradeChanged);
-        AddDropdownRow("允许使用的最低引子品级", GradeNames, () => GradeToIndex(ContinuousMakeSettingsStore.Current.LowestMaterialGrade), OnLowestGradeChanged);
-        AddSwitchRow("优先使用工具的品级", ToolPriorityNames, () => ContinuousMakeSettingsStore.Current.ToolGradePriority, value => ContinuousMakeSettingsStore.Current.ToolGradePriority = value);
-        AddBoolRow("是否允许徒手制作", () => ContinuousMakeSettingsStore.Current.AllowBareHand, value => ContinuousMakeSettingsStore.Current.AllowBareHand = value);
-        AddBoolRow("是否开启耐久保护", () => ContinuousMakeSettingsStore.Current.EnableDurabilityProtection, value => ContinuousMakeSettingsStore.Current.EnableDurabilityProtection = value);
+        AddBoolRow("是否包括行囊", () => Settings.IncludeInventory, value => Settings.IncludeInventory = value);
+        AddBoolRow("是否包括私库", () => Settings.IncludePrivateStorage, value => Settings.IncludePrivateStorage = value);
+        AddBoolRow("是否包括公库", () => Settings.IncludePublicStorage, value => Settings.IncludePublicStorage = value);
+        AddDropdownRow("允许使用的最高引子品级", GradeNames, () => GradeToIndex(Settings.HighestMaterialGrade), OnHighestGradeChanged);
+        AddDropdownRow("允许使用的最低引子品级", GradeNames, () => GradeToIndex(Settings.LowestMaterialGrade), OnLowestGradeChanged);
+        AddSwitchRow("优先使用工具的品级", ToolPriorityNames, () => Settings.ToolGradePriority, value => Settings.ToolGradePriority = value);
+        AddSwitchRow("批量制作模式", BatchMakeStartModeNames, () => Settings.BatchMakeStartMode, value => Settings.BatchMakeStartMode = value);
+        AddBoolRow("是否允许徒手制作", () => Settings.AllowBareHand, value => Settings.AllowBareHand = value);
+        AddBoolRow("是否开启耐久保护", () => Settings.EnableDurabilityProtection, value => Settings.EnableDurabilityProtection = value);
+        AddIntSliderRow("批量制作速度", ContinuousMakeSettings.MinBatchMakeSpeed, ContinuousMakeSettings.MaxBatchMakeSpeed, () => Settings.BatchMakeSpeed, value => Settings.BatchMakeSpeed = value, FormatBatchMakeSpeed);
 
         RefreshValues();
     }
@@ -618,6 +738,98 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
                 setter(value);
                 SaveAndRefresh();
             });
+        }
+
+        _controlRebinds.Add(Bind);
+        Bind();
+    }
+
+    private void AddIntSliderRow(string label, int min, int max, Func<int> getter, Action<int> setter, Func<int, string> formatter)
+    {
+        var item = Instantiate(NativeContinuousMakeSettingsTemplates.IntSettingPrefab, _contentRoot);
+        item.gameObject.name = "Setting_" + label;
+        PrepareRow(item.gameObject, label);
+
+        var traverse = Traverse.Create(item);
+        var slider = traverse.Field("slider").GetValue<FwUi.CSlider>();
+        var addBtn = traverse.Field("addBtn").GetValue<FwUi.CButton>();
+        var reduceBtn = traverse.Field("reduceBtn").GetValue<FwUi.CButton>();
+        var valueText = traverse.Field("valueText").GetValue<TMP_InputField>();
+
+        var value = Mathf.Clamp(getter(), min, max);
+        void ApplyValue(int next, bool notify)
+        {
+            var nextValue = Mathf.Clamp(next, min, max);
+            var changed = nextValue != value;
+            value = nextValue;
+            ApplyIntRowVisual(slider, valueText, addBtn, reduceBtn, min, max, value, formatter);
+            if (!notify || !changed)
+                return;
+
+            setter(value);
+            SaveAndRefresh();
+        }
+
+        void Bind()
+        {
+            if (slider != null)
+            {
+                slider.onValueChanged = new UGui.Slider.SliderEvent();
+                slider.minValue = min;
+                slider.maxValue = max;
+                slider.wholeNumbers = true;
+                DisableTooltips(slider.gameObject);
+                slider.onValueChanged.AddListener(rawValue =>
+                {
+                    if (_syncing)
+                        return;
+
+                    ApplyValue(Mathf.RoundToInt(rawValue), true);
+                });
+            }
+
+            if (addBtn != null)
+            {
+                addBtn.onClick = new UGui.Button.ButtonClickedEvent();
+                addBtn.onClick.AddListener(() =>
+                {
+                    if (_syncing)
+                        return;
+
+                    ApplyValue(value + 1, true);
+                });
+            }
+
+            if (reduceBtn != null)
+            {
+                reduceBtn.onClick = new UGui.Button.ButtonClickedEvent();
+                reduceBtn.onClick.AddListener(() =>
+                {
+                    if (_syncing)
+                        return;
+
+                    ApplyValue(value - 1, true);
+                });
+            }
+
+            if (valueText != null)
+            {
+                valueText.onSubmit.RemoveAllListeners();
+                valueText.onEndEdit.RemoveAllListeners();
+                valueText.onSubmit.AddListener(input =>
+                {
+                    if (!_syncing)
+                        ApplyValue(ParseIntInput(input, value), true);
+                });
+                valueText.onEndEdit.AddListener(input =>
+                {
+                    if (!_syncing)
+                        ApplyValue(ParseIntInput(input, value), true);
+                });
+            }
+
+            value = Mathf.Clamp(getter(), min, max);
+            ApplyValue(value, false);
         }
 
         _controlRebinds.Add(Bind);
@@ -750,7 +962,8 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
     private void RefreshValues()
     {
         _syncing = true;
-        ContinuousMakeSettingsStore.Current.Normalize();
+        var settings = Settings;
+        settings.Normalize();
 
         foreach (var item in GetComponentsInChildren<SysSetting.BoolSettingItem>(true))
         {
@@ -761,11 +974,11 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
 
             toggle.SetIsOnWithoutNotify(label switch
             {
-                "是否包括行囊" => ContinuousMakeSettingsStore.Current.IncludeInventory,
-                "是否包括私库" => ContinuousMakeSettingsStore.Current.IncludePrivateStorage,
-                "是否包括公库" => ContinuousMakeSettingsStore.Current.IncludePublicStorage,
-                "是否允许徒手制作" => ContinuousMakeSettingsStore.Current.AllowBareHand,
-                "是否开启耐久保护" => ContinuousMakeSettingsStore.Current.EnableDurabilityProtection,
+                "是否包括行囊" => settings.IncludeInventory,
+                "是否包括私库" => settings.IncludePrivateStorage,
+                "是否包括公库" => settings.IncludePublicStorage,
+                "是否允许徒手制作" => settings.AllowBareHand,
+                "是否开启耐久保护" => settings.EnableDurabilityProtection,
                 _ => toggle.isOn
             });
         }
@@ -779,8 +992,8 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
 
             dropdown.SetValueWithoutNotify(label switch
             {
-                "允许使用的最高引子品级" => GradeToIndex(ContinuousMakeSettingsStore.Current.HighestMaterialGrade),
-                "允许使用的最低引子品级" => GradeToIndex(ContinuousMakeSettingsStore.Current.LowestMaterialGrade),
+                "允许使用的最高引子品级" => GradeToIndex(settings.HighestMaterialGrade),
+                "允许使用的最低引子品级" => GradeToIndex(settings.LowestMaterialGrade),
                 _ => dropdown.value
             });
         }
@@ -788,20 +1001,47 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
         foreach (var item in GetComponentsInChildren<SysSetting.SwitchButtonSettingItem>(true))
         {
             var label = Traverse.Create(item).Field("labelText").GetValue<TextMeshProUGUI>()?.text;
-            if (label != "优先使用工具的品级")
+            var value = 0;
+            IReadOnlyList<string> options = null;
+            switch (label)
+            {
+                case "优先使用工具的品级":
+                    value = Mathf.Clamp(settings.ToolGradePriority, 0, ToolPriorityNames.Length - 1);
+                    options = ToolPriorityNames;
+                    break;
+                case "批量制作模式":
+                    value = Mathf.Clamp(settings.BatchMakeStartMode, 0, BatchMakeStartModeNames.Length - 1);
+                    options = BatchMakeStartModeNames;
+                    break;
+            }
+
+            if (options == null)
                 continue;
 
-            var value = Mathf.Clamp(ContinuousMakeSettingsStore.Current.ToolGradePriority, 0, ToolPriorityNames.Length - 1);
             var traverse = Traverse.Create(item);
             var valueText = traverse.Field("valueText").GetValue<TextMeshProUGUI>();
             var leftBtn = traverse.Field("leftBtn").GetValue<FwUi.CButton>();
             var rightBtn = traverse.Field("rightBtn").GetValue<FwUi.CButton>();
             if (valueText != null)
-                valueText.SetText(ToolPriorityNames[value]);
+                valueText.SetText(options[value]);
             if (leftBtn != null)
                 leftBtn.interactable = value > 0;
             if (rightBtn != null)
-                rightBtn.interactable = value < ToolPriorityNames.Length - 1;
+                rightBtn.interactable = value < options.Count - 1;
+        }
+
+        foreach (var item in GetComponentsInChildren<SysSetting.IntSettingItem>(true))
+        {
+            var label = Traverse.Create(item).Field("labelText").GetValue<TextMeshProUGUI>()?.text;
+            if (label != "批量制作速度")
+                continue;
+
+            var traverse = Traverse.Create(item);
+            var slider = traverse.Field("slider").GetValue<FwUi.CSlider>();
+            var addBtn = traverse.Field("addBtn").GetValue<FwUi.CButton>();
+            var reduceBtn = traverse.Field("reduceBtn").GetValue<FwUi.CButton>();
+            var valueText = traverse.Field("valueText").GetValue<TMP_InputField>();
+            ApplyIntRowVisual(slider, valueText, addBtn, reduceBtn, ContinuousMakeSettings.MinBatchMakeSpeed, ContinuousMakeSettings.MaxBatchMakeSpeed, settings.BatchMakeSpeed, FormatBatchMakeSpeed);
         }
 
         _syncing = false;
@@ -810,23 +1050,26 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
     private void OnHighestGradeChanged(int index)
     {
         var grade = IndexToGrade(index);
-        ContinuousMakeSettingsStore.Current.HighestMaterialGrade = grade;
-        if (ContinuousMakeSettingsStore.Current.LowestMaterialGrade < grade)
-            ContinuousMakeSettingsStore.Current.LowestMaterialGrade = grade;
+        var settings = Settings;
+        settings.HighestMaterialGrade = grade;
+        if (settings.LowestMaterialGrade < grade)
+            settings.LowestMaterialGrade = grade;
     }
 
     private void OnLowestGradeChanged(int index)
     {
         var grade = IndexToGrade(index);
-        ContinuousMakeSettingsStore.Current.LowestMaterialGrade = grade;
-        if (ContinuousMakeSettingsStore.Current.HighestMaterialGrade > grade)
-            ContinuousMakeSettingsStore.Current.HighestMaterialGrade = grade;
+        var settings = Settings;
+        settings.LowestMaterialGrade = grade;
+        if (settings.HighestMaterialGrade > grade)
+            settings.HighestMaterialGrade = grade;
     }
 
     private void SaveAndRefresh()
     {
-        ContinuousMakeSettingsStore.Save();
+        ContinuousMakeSettingsStore.Save(_lifeSkillType);
         RefreshValues();
+        ContinuousMakeUiController.RefreshAll();
     }
 
     private void BindCloseButton()
@@ -1098,6 +1341,46 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
     private static int IndexToGrade(int index)
     {
         return Mathf.Clamp(index, 0, 8) + 1;
+    }
+
+    private static void ApplyIntRowVisual(
+        FwUi.CSlider slider,
+        TMP_InputField valueText,
+        FwUi.CButton addBtn,
+        FwUi.CButton reduceBtn,
+        int min,
+        int max,
+        int value,
+        Func<int, string> formatter)
+    {
+        value = Mathf.Clamp(value, min, max);
+        if (slider != null)
+            slider.SetValueWithoutNotify(value);
+        if (valueText != null)
+            valueText.SetTextWithoutNotify(formatter == null ? value.ToString() : formatter(value));
+        if (addBtn != null)
+            addBtn.interactable = value < max;
+        if (reduceBtn != null)
+            reduceBtn.interactable = value > min;
+    }
+
+    private static int ParseIntInput(string input, int fallback)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+            return fallback;
+
+        var text = input.Trim();
+        if (text.EndsWith("x", StringComparison.OrdinalIgnoreCase))
+            text = text.Substring(0, text.Length - 1).Trim();
+        if (text.EndsWith("倍", StringComparison.Ordinal))
+            text = text.Substring(0, text.Length - 1).Trim();
+
+        return int.TryParse(text, out var result) ? result : fallback;
+    }
+
+    private static string FormatBatchMakeSpeed(int value)
+    {
+        return Mathf.Clamp(value, ContinuousMakeSettings.MinBatchMakeSpeed, ContinuousMakeSettings.MaxBatchMakeSpeed) + "x";
     }
 
     private static void DisableTooltips(GameObject obj)
