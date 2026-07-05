@@ -296,9 +296,9 @@ internal sealed class PurchaseOptimizationUiController : MonoBehaviour
         }
 
         if (_settingsButton == null && buyBackRect != null)
-            _settingsButton = CreateButton(template, buyBackRect, "BetterTaiwuScrollPurchaseSettingsButton", "设置", SettingsOffsetX, SettingsOffsetY, OpenSettingsPanel);
+            _settingsButton = CreateButton(template, buyBackRect, "BetterTaiwuScrollPurchaseSettingsButton", "Settings", SettingsOffsetX, SettingsOffsetY, OpenSettingsPanel);
         if (_batchButton == null)
-            _batchButton = CreateButton(template, defaultAnchor, "BetterTaiwuScrollBulkPurchaseButton", "批量采购", 0f, 0f, OnBatchPurchaseClicked);
+            _batchButton = CreateButton(template, defaultAnchor, "BetterTaiwuScrollBulkPurchaseButton", "Bulk Purchase", 0f, 0f, OnBatchPurchaseClicked);
 
         PositionBatchButton(container);
         PurchaseOptimizationSettingsPanel.Preload();
@@ -445,8 +445,8 @@ internal sealed class PurchaseOptimizationUiController : MonoBehaviour
             childButton.interactable = true;
 
         button.ClearAndAddListener(onClick);
-        SetButtonText(buttonObj, text);
-        (buttonObj.GetComponent<ButtonTextOverride>() ?? buttonObj.AddComponent<ButtonTextOverride>()).SetText(text);
+        SetButtonText(buttonObj, ModLocalization.T(text));
+        (buttonObj.GetComponent<ButtonTextOverride>() ?? buttonObj.AddComponent<ButtonTextOverride>()).SetText(ModLocalization.T(text));
         ConfigureTooltip(buttonObj, text);
         buttonObj.SetActive(true);
         return button;
@@ -663,8 +663,10 @@ internal sealed class PurchaseOptimizationUiController : MonoBehaviour
             tooltip.NeedRefresh = false;
             tooltip.PresetParam = new[]
             {
-                text,
-                text == "设置" ? "打开批量采购设置。" : "按照设置把符合条件的商品加入买入列表。"
+                ModLocalization.T(text),
+                text == "Settings"
+                    ? ModLocalization.T("Open the bulk purchase settings.")
+                    : ModLocalization.T("Add matching goods to the buy list per your settings.")
             };
         }
     }

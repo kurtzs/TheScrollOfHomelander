@@ -77,6 +77,7 @@ public sealed class Plugin : TaiwuRemakePlugin
 
     public override void Initialize()
     {
+        ModLocalization.Refresh();
         LoadSettings(ModIdStr);
         ModDirectory = ModManager.GetModInfo(ModIdStr)?.DirectoryName;
         ContinuousMakeSettingsStore.Load();
@@ -90,6 +91,7 @@ public sealed class Plugin : TaiwuRemakePlugin
 
     public override void OnModSettingUpdate()
     {
+        ModLocalization.Refresh();
         LoadSettings(ModIdStr);
         ContinuousMakeUiController.RefreshAll();
         ContainerCompactPatches.RefreshAllActive(allowRestore: true);

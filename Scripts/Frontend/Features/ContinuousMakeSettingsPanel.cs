@@ -274,30 +274,40 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
     private const float RowSpacing = 8f;
     private const int PanelSortingOrder = 5000;
 
+    // English source keys; localized for display via ModLocalization.T(...).
     private static readonly string[] GradeNames =
     {
-        "神·一品",
-        "绝·二品",
-        "超·三品",
-        "极·四品",
-        "秘·五品",
-        "奇·六品",
-        "上·七品",
-        "中·八品",
-        "下·九品"
+        "Tier 1",
+        "Tier 2",
+        "Tier 3",
+        "Tier 4",
+        "Tier 5",
+        "Tier 6",
+        "Tier 7",
+        "Tier 8",
+        "Tier 9"
     };
 
     private static readonly string[] ToolPriorityNames =
     {
-        "高品",
-        "低品"
+        "High Tier",
+        "Low Tier"
     };
 
     private static readonly string[] BatchMakeStartModeNames =
     {
-        "勾选模式",
-        "按钮模式"
+        "Checkbox Mode",
+        "Button Mode"
     };
+
+    // The visible dropdown/switch options for the current language.
+    private static string[] Localized(string[] keys)
+    {
+        var result = new string[keys.Length];
+        for (var i = 0; i < keys.Length; i++)
+            result[i] = ModLocalization.T(keys[i]);
+        return result;
+    }
 
     private static ContinuousMakeSettingsPanel _current;
     private static bool _requestingArchiveTemplate;
@@ -438,7 +448,7 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
         if (confirmBtn == null)
             confirmBtn = FindDeep(transform, "EnterGame")?.GetComponent<CButton>();
         if (title != null)
-            title.SetText("连续制作设置");
+            title.SetText(ModLocalization.T("Continuous Crafting Settings"));
 
         if (scroll != null)
             scroll.gameObject.SetActive(false);
@@ -693,16 +703,16 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
         if (_contentRoot == null)
             return;
 
-        AddBoolRow("是否包括行囊", () => Settings.IncludeInventory, value => Settings.IncludeInventory = value);
-        AddBoolRow("是否包括私库", () => Settings.IncludePrivateStorage, value => Settings.IncludePrivateStorage = value);
-        AddBoolRow("是否包括公库", () => Settings.IncludePublicStorage, value => Settings.IncludePublicStorage = value);
-        AddDropdownRow("允许使用的最高引子品级", GradeNames, () => GradeToIndex(Settings.HighestMaterialGrade), OnHighestGradeChanged);
-        AddDropdownRow("允许使用的最低引子品级", GradeNames, () => GradeToIndex(Settings.LowestMaterialGrade), OnLowestGradeChanged);
-        AddSwitchRow("优先使用工具的品级", ToolPriorityNames, () => Settings.ToolGradePriority, value => Settings.ToolGradePriority = value);
-        AddSwitchRow("批量制作模式", BatchMakeStartModeNames, () => Settings.BatchMakeStartMode, value => Settings.BatchMakeStartMode = value);
-        AddBoolRow("是否允许徒手制作", () => Settings.AllowBareHand, value => Settings.AllowBareHand = value);
-        AddBoolRow("是否开启耐久保护", () => Settings.EnableDurabilityProtection, value => Settings.EnableDurabilityProtection = value);
-        AddIntSliderRow("批量制作速度", ContinuousMakeSettings.MinBatchMakeSpeed, ContinuousMakeSettings.MaxBatchMakeSpeed, () => Settings.BatchMakeSpeed, value => Settings.BatchMakeSpeed = value, FormatBatchMakeSpeed);
+        AddBoolRow("Include Travel Bag", () => Settings.IncludeInventory, value => Settings.IncludeInventory = value);
+        AddBoolRow("Include Private Storage", () => Settings.IncludePrivateStorage, value => Settings.IncludePrivateStorage = value);
+        AddBoolRow("Include Public Storage", () => Settings.IncludePublicStorage, value => Settings.IncludePublicStorage = value);
+        AddDropdownRow("Highest Reagent Tier Allowed", Localized(GradeNames), () => GradeToIndex(Settings.HighestMaterialGrade), OnHighestGradeChanged);
+        AddDropdownRow("Lowest Reagent Tier Allowed", Localized(GradeNames), () => GradeToIndex(Settings.LowestMaterialGrade), OnLowestGradeChanged);
+        AddSwitchRow("Preferred Tool Tier", Localized(ToolPriorityNames), () => Settings.ToolGradePriority, value => Settings.ToolGradePriority = value);
+        AddSwitchRow("Batch Crafting Mode", Localized(BatchMakeStartModeNames), () => Settings.BatchMakeStartMode, value => Settings.BatchMakeStartMode = value);
+        AddBoolRow("Allow Bare-Hand Crafting", () => Settings.AllowBareHand, value => Settings.AllowBareHand = value);
+        AddBoolRow("Enable Durability Protection", () => Settings.EnableDurabilityProtection, value => Settings.EnableDurabilityProtection = value);
+        AddIntSliderRow("Batch Crafting Speed", ContinuousMakeSettings.MinBatchMakeSpeed, ContinuousMakeSettings.MaxBatchMakeSpeed, () => Settings.BatchMakeSpeed, value => Settings.BatchMakeSpeed = value, FormatBatchMakeSpeed);
 
         RefreshValues();
     }
@@ -949,7 +959,7 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
         var labelText = Traverse.Create(row.GetComponent<SysSetting.SettingItemBase>()).Field("labelText").GetValue<TextMeshProUGUI>();
         if (labelText != null)
         {
-            labelText.SetText(label);
+            labelText.SetText(ModLocalization.T(label));
             labelText.enableAutoSizing = true;
             labelText.fontSizeMin = 18f;
             labelText.fontSizeMax = 26f;
@@ -957,6 +967,17 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
         }
 
         DisableTooltips(row);
+    }
+
+    // The language-independent identity of a row, stored in its GameObject name as
+    // "Setting_<English key>". Used to match rows without depending on the visible text.
+    private static string RowKey(Component item)
+    {
+        var name = item == null ? null : item.gameObject.name;
+        const string prefix = "Setting_";
+        return !string.IsNullOrEmpty(name) && name.StartsWith(prefix, StringComparison.Ordinal)
+            ? name.Substring(prefix.Length)
+            : name;
     }
 
     private void RefreshValues()
@@ -967,51 +988,51 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
 
         foreach (var item in GetComponentsInChildren<SysSetting.BoolSettingItem>(true))
         {
-            var label = Traverse.Create(item).Field("labelText").GetValue<TextMeshProUGUI>()?.text;
+            var label = RowKey(item);
             var toggle = Traverse.Create(item).Field("toggle").GetValue<FwUi.CToggle>();
             if (toggle == null)
                 continue;
 
             toggle.SetIsOnWithoutNotify(label switch
             {
-                "是否包括行囊" => settings.IncludeInventory,
-                "是否包括私库" => settings.IncludePrivateStorage,
-                "是否包括公库" => settings.IncludePublicStorage,
-                "是否允许徒手制作" => settings.AllowBareHand,
-                "是否开启耐久保护" => settings.EnableDurabilityProtection,
+                "Include Travel Bag" => settings.IncludeInventory,
+                "Include Private Storage" => settings.IncludePrivateStorage,
+                "Include Public Storage" => settings.IncludePublicStorage,
+                "Allow Bare-Hand Crafting" => settings.AllowBareHand,
+                "Enable Durability Protection" => settings.EnableDurabilityProtection,
                 _ => toggle.isOn
             });
         }
 
         foreach (var item in GetComponentsInChildren<SysSetting.EnumSettingItem>(true))
         {
-            var label = Traverse.Create(item).Field("labelText").GetValue<TextMeshProUGUI>()?.text;
+            var label = RowKey(item);
             var dropdown = Traverse.Create(item).Field("dropdown").GetValue<FwUi.CDropdown>();
             if (dropdown == null)
                 continue;
 
             dropdown.SetValueWithoutNotify(label switch
             {
-                "允许使用的最高引子品级" => GradeToIndex(settings.HighestMaterialGrade),
-                "允许使用的最低引子品级" => GradeToIndex(settings.LowestMaterialGrade),
+                "Highest Reagent Tier Allowed" => GradeToIndex(settings.HighestMaterialGrade),
+                "Lowest Reagent Tier Allowed" => GradeToIndex(settings.LowestMaterialGrade),
                 _ => dropdown.value
             });
         }
 
         foreach (var item in GetComponentsInChildren<SysSetting.SwitchButtonSettingItem>(true))
         {
-            var label = Traverse.Create(item).Field("labelText").GetValue<TextMeshProUGUI>()?.text;
+            var label = RowKey(item);
             var value = 0;
             IReadOnlyList<string> options = null;
             switch (label)
             {
-                case "优先使用工具的品级":
+                case "Preferred Tool Tier":
                     value = Mathf.Clamp(settings.ToolGradePriority, 0, ToolPriorityNames.Length - 1);
-                    options = ToolPriorityNames;
+                    options = Localized(ToolPriorityNames);
                     break;
-                case "批量制作模式":
+                case "Batch Crafting Mode":
                     value = Mathf.Clamp(settings.BatchMakeStartMode, 0, BatchMakeStartModeNames.Length - 1);
-                    options = BatchMakeStartModeNames;
+                    options = Localized(BatchMakeStartModeNames);
                     break;
             }
 
@@ -1032,8 +1053,8 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
 
         foreach (var item in GetComponentsInChildren<SysSetting.IntSettingItem>(true))
         {
-            var label = Traverse.Create(item).Field("labelText").GetValue<TextMeshProUGUI>()?.text;
-            if (label != "批量制作速度")
+            var label = RowKey(item);
+            if (label != "Batch Crafting Speed")
                 continue;
 
             var traverse = Traverse.Create(item);
@@ -1225,6 +1246,10 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
             target.gameObject.SetActive(false);
     }
 
+    // Revert-archive column headers, matched in whatever language the game renders them.
+    private static readonly HashSet<string> ArchiveHeaderLabels =
+        ModLocalization.BuildBilingualLabelSet(new[] { "头像", "名字", "第几世", "存档时间", "所在地点" });
+
     private void HideArchiveHeaderRow()
     {
         var headerTexts = new List<Transform>();
@@ -1233,16 +1258,8 @@ internal sealed class ContinuousMakeSettingsPanel : MonoBehaviour
             if (text == null)
                 continue;
 
-            switch (text.text)
-            {
-                case "头像":
-                case "名字":
-                case "第几世":
-                case "存档时间":
-                case "所在地点":
-                    headerTexts.Add(text.transform);
-                    break;
-            }
+            if (ArchiveHeaderLabels.Contains(text.text))
+                headerTexts.Add(text.transform);
         }
 
         if (headerTexts.Count == 0)
