@@ -1533,7 +1533,9 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
     private const float InlineButtonHeight = 38f;
     private const float InlineButtonMinWidth = 46f;
     private const float InlineButtonPreferredWidth = 60f;
-    private const float InlineButtonMaxWidth = 96f;
+    // Cap wide enough to fit longer (e.g. English) filter labels without truncating;
+    // narrow labels stay compact because the width is panelWidth/columns clamped to this.
+    private const float InlineButtonMaxWidth = 150f;
     private const float InlineButtonSpacing = 4f;
     private const float CompactSummaryHeight = 34f;
     private const int DelayedLayoutRefreshFrames = 2;
@@ -1559,6 +1561,7 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
     private bool _showRootSectionInPanel;
     private string _lastRefreshSignature;
     private readonly HashSet<int> _inlineOptionsWithFollowUpMenus = new();
+    private float _stableInlineWidth;
 
     internal static InlineFilterButtonsController GetOrAdd(SortAndFilter owner)
     {
@@ -1937,7 +1940,14 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
 
         var grid = contentRoot.GetComponent<GridLayoutGroup>();
         var panelHeight = InlinePanelHeight;
-        var panelWidth = GetInlineAvailableWidth(rect);
+        // Forcing this row's parent to fit `panelWidth` grows the parent, which then makes
+        // GetInlineAvailableWidth report a bigger width on the next click — a feedback loop
+        // that widens the row every time. Latch the first width and only ever let it shrink
+        // (a genuine resize-down), never grow, to break that loop.
+        var measuredWidth = GetInlineAvailableWidth(rect);
+        if (_stableInlineWidth <= 0f || measuredWidth < _stableInlineWidth - 4f)
+            _stableInlineWidth = measuredWidth;
+        var panelWidth = _stableInlineWidth;
         if (grid != null)
         {
             var activeCount = Math.Max(CountActiveChildren(contentRoot), 1);
