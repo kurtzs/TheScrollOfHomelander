@@ -2,8 +2,10 @@
 #pragma warning disable CS0612
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using FrameWork;
 using HarmonyLib;
 using GameData.Domains.Global;
@@ -12,6 +14,7 @@ using GameData.Domains.Item.Display;
 using GameData.Domains.Taiwu.ExchangeSystem;
 using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 using ExchangeContainerView = Game.Views.Exchange.ExchangeContainer;
 using ExchangeViewBase = Game.Views.Exchange.ViewExchangeBase;
 using ShopView = Game.Views.Exchange.ViewShop;
@@ -224,15 +227,16 @@ internal sealed class PurchaseOptimizationUiController : MonoBehaviour
     private const float ButtonHeight = 46f * ButtonScale;
     private const float SettingsOffsetX = -18f;
     private const float SettingsOffsetY = 80f * ButtonScale;
-    private const float BatchOffsetX = -36f;
-    private const float BatchOffsetY = -64f * ButtonScale;
+    private const float BatchButtonGap = 8f;
     private const int MaterialItemType = 5;
     private const short MedicineMaterialSubType = 505;
     private const short PoisonMaterialSubType = 506;
+    private static readonly FieldInfo RefreshGoodsField = AccessTools.Field(typeof(ShopView), "refreshGoods");
 
     private ShopView _view;
     private CButton _settingsButton;
     private CButton _batchButton;
+    private Coroutine _batchButtonLayoutCoroutine;
 
     internal static PurchaseOptimizationUiController GetOrAdd(ShopView view)
     {
@@ -267,7 +271,8 @@ internal sealed class PurchaseOptimizationUiController : MonoBehaviour
 
         EnsureButtons();
         SetActive(_settingsButton, true);
-        SetActive(_batchButton, true);
+        SetActive(_batchButton, PositionBatchButton());
+        QueueBatchButtonLayoutRefresh();
     }
 
     private void EnsureButtons()
@@ -278,7 +283,9 @@ internal sealed class PurchaseOptimizationUiController : MonoBehaviour
         var container = Traverse.Create(_view).Field("exchangeContainer").GetValue<ExchangeContainerView>();
         var buyBackToggle = container?.targetPage?.Get(7);
         var buyBackRect = buyBackToggle == null ? null : buyBackToggle.transform as RectTransform;
-        if (buyBackRect == null || buyBackRect.parent == null)
+        var batchAnchorRect = GetBatchButtonAnchorRect(container);
+        var defaultAnchor = buyBackRect ?? batchAnchorRect;
+        if (defaultAnchor == null || defaultAnchor.parent == null)
             return;
 
         var template = NativeContinuousMakeUiTemplates.FindArrangementSettingButtonTemplate();
@@ -288,9 +295,129 @@ internal sealed class PurchaseOptimizationUiController : MonoBehaviour
             return;
         }
 
-        _settingsButton = CreateButton(template, buyBackRect, "BetterTaiwuScrollPurchaseSettingsButton", "设置", SettingsOffsetX, SettingsOffsetY, OpenSettingsPanel);
-        _batchButton = CreateButton(template, buyBackRect, "BetterTaiwuScrollBulkPurchaseButton", "批量采购", BatchOffsetX, BatchOffsetY, OnBatchPurchaseClicked);
+        if (_settingsButton == null && buyBackRect != null)
+            _settingsButton = CreateButton(template, buyBackRect, "BetterTaiwuScrollPurchaseSettingsButton", "设置", SettingsOffsetX, SettingsOffsetY, OpenSettingsPanel);
+        if (_batchButton == null)
+            _batchButton = CreateButton(template, defaultAnchor, "BetterTaiwuScrollBulkPurchaseButton", "批量采购", 0f, 0f, OnBatchPurchaseClicked);
+
+        PositionBatchButton(container);
         PurchaseOptimizationSettingsPanel.Preload();
+    }
+
+    private bool PositionBatchButton()
+    {
+        var container = _view == null ? null : Traverse.Create(_view).Field("exchangeContainer").GetValue<ExchangeContainerView>();
+        return PositionBatchButton(container);
+    }
+
+    private bool PositionBatchButton(ExchangeContainerView container)
+    {
+        var buttonRect = _batchButton == null ? null : _batchButton.transform as RectTransform;
+        var targetRect = GetBatchButtonAnchorRect(container);
+        if (buttonRect == null || targetRect == null || targetRect.parent == null)
+            return false;
+
+        if (buttonRect.parent != targetRect.parent)
+            buttonRect.SetParent(targetRect.parent, false);
+
+        buttonRect.anchorMin = targetRect.anchorMin;
+        buttonRect.anchorMax = targetRect.anchorMax;
+        buttonRect.pivot = targetRect.pivot;
+        buttonRect.sizeDelta = new Vector2(ButtonWidth, ButtonHeight);
+        buttonRect.localScale = Vector3.one;
+        ConfigureBatchButtonLayoutElement(buttonRect.gameObject);
+        buttonRect.SetSiblingIndex(Math.Max(targetRect.GetSiblingIndex(), 0));
+        if (TryRefreshParentLayout(targetRect.parent as RectTransform))
+            return true;
+
+        buttonRect.anchoredPosition = GetLeftSidePosition(targetRect, buttonRect.pivot);
+        return true;
+    }
+
+    private void QueueBatchButtonLayoutRefresh()
+    {
+        if (!isActiveAndEnabled || _batchButton == null)
+            return;
+
+        if (_batchButtonLayoutCoroutine != null)
+            StopCoroutine(_batchButtonLayoutCoroutine);
+
+        _batchButtonLayoutCoroutine = StartCoroutine(RefreshBatchButtonLayoutAfterNativeLayout());
+    }
+
+    private IEnumerator RefreshBatchButtonLayoutAfterNativeLayout()
+    {
+        yield return null;
+        Canvas.ForceUpdateCanvases();
+        PositionBatchButton();
+
+        yield return new WaitForEndOfFrame();
+        Canvas.ForceUpdateCanvases();
+        PositionBatchButton();
+        _batchButtonLayoutCoroutine = null;
+    }
+
+    private RectTransform GetBatchButtonAnchorRect(ExchangeContainerView container)
+    {
+        return GetButtonRect(GetRefreshGoodsButton()) ?? GetButtonRect(container?.putTargetAll);
+    }
+
+    private CButton GetRefreshGoodsButton()
+    {
+        var button = RefreshGoodsField?.GetValue(_view) as CButton;
+        if (button == null || button.gameObject == null || !button.gameObject.activeSelf)
+            return null;
+
+        return button;
+    }
+
+    private static RectTransform GetButtonRect(CButton button)
+    {
+        return button == null ? null : button.transform as RectTransform;
+    }
+
+    private static void ConfigureBatchButtonLayoutElement(GameObject buttonObj)
+    {
+        var layout = buttonObj.GetComponent<LayoutElement>() ?? buttonObj.AddComponent<LayoutElement>();
+        layout.ignoreLayout = false;
+        layout.minWidth = ButtonWidth;
+        layout.preferredWidth = ButtonWidth;
+        layout.flexibleWidth = 0f;
+        layout.minHeight = ButtonHeight;
+        layout.preferredHeight = ButtonHeight;
+        layout.flexibleHeight = 0f;
+    }
+
+    private static bool TryRefreshParentLayout(RectTransform parentRect)
+    {
+        if (parentRect == null || parentRect.GetComponent<LayoutGroup>() == null)
+            return false;
+
+        Canvas.ForceUpdateCanvases();
+        LayoutRebuilder.ForceRebuildLayoutImmediate(parentRect);
+        Canvas.ForceUpdateCanvases();
+        return true;
+    }
+
+    private static Vector2 GetLeftSidePosition(RectTransform targetRect, Vector2 pivot)
+    {
+        var targetWidth = Mathf.Abs(targetRect.rect.width);
+        if (targetWidth < 1f)
+            targetWidth = Mathf.Abs(targetRect.sizeDelta.x);
+        if (targetWidth < 1f)
+            targetWidth = ButtonWidth;
+
+        var targetHeight = Mathf.Abs(targetRect.rect.height);
+        if (targetHeight < 1f)
+            targetHeight = Mathf.Abs(targetRect.sizeDelta.y);
+        if (targetHeight < 1f)
+            targetHeight = ButtonHeight;
+
+        var targetLeft = targetRect.anchoredPosition.x - targetRect.pivot.x * targetWidth;
+        var targetCenterY = targetRect.anchoredPosition.y + (0.5f - targetRect.pivot.y) * targetHeight;
+        var x = targetLeft - BatchButtonGap - (1f - pivot.x) * ButtonWidth;
+        var y = targetCenterY - (0.5f - pivot.y) * ButtonHeight;
+        return new Vector2(x, y);
     }
 
     private CButton CreateButton(CButton template, RectTransform anchor, string name, string text, float offsetX, float offsetY, Action onClick)

@@ -51,6 +51,7 @@ internal static class InventorySearchBoxOptimizationSupport
     private const float SearchWidth = 210f;
     private const float SearchHeight = 38f;
     private const float SearchGap = 10f;
+    private const float SearchMinWidth = 120f;
     private const string SearchObjectName = "BetterTaiwuScrollInventorySearchBox";
 
     private static readonly AccessTools.FieldRef<ViewCharacterMenuItems, ItemListScroll> ItemListScrollRef =
@@ -197,6 +198,78 @@ internal static class InventorySearchBoxOptimizationSupport
     internal static float SearchWidthValue => SearchWidth;
     internal static float SearchHeightValue => SearchHeight;
     internal static float SearchGapValue => SearchGap;
+
+    internal static bool TryFindLastActiveFilterToggleRect(RectTransform toggleRoot, out RectTransform rect)
+    {
+        rect = null;
+        if (toggleRoot == null)
+            return false;
+
+        for (var i = 0; i < toggleRoot.childCount; i++)
+        {
+            var child = toggleRoot.GetChild(i);
+            if (child == null || !child.gameObject.activeInHierarchy)
+                continue;
+
+            var childRect = child as RectTransform;
+            if (childRect == null || child.GetComponent<FilterToggle>() == null)
+                continue;
+
+            rect = childRect;
+        }
+
+        return rect != null;
+    }
+
+    internal static bool PositionSearchBoxAfterToggle(
+        RectTransform inputRect,
+        RectTransform parent,
+        RectTransform anchorToggle,
+        float preferredWidth,
+        float preferredHeight,
+        float gap)
+    {
+        if (inputRect == null || parent == null || anchorToggle == null)
+            return false;
+
+        if (parent.rect.width <= 0f || parent.rect.height <= 0f || anchorToggle.rect.width <= 0f)
+        {
+            Canvas.ForceUpdateCanvases();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(parent);
+        }
+
+        var corners = new Vector3[4];
+        anchorToggle.GetWorldCorners(corners);
+        var rightMiddle = (corners[2] + corners[3]) * 0.5f;
+        var center = (corners[0] + corners[2]) * 0.5f;
+        var rightLocal = (Vector2)parent.InverseTransformPoint(rightMiddle);
+        var centerLocal = (Vector2)parent.InverseTransformPoint(center);
+
+        var left = rightLocal.x + gap;
+        var availableWidth = parent.rect.xMax - left - gap;
+        var width = availableWidth > 0f
+            ? Mathf.Clamp(availableWidth, Math.Min(SearchMinWidth, preferredWidth), preferredWidth)
+            : preferredWidth;
+
+        var anchor = new Vector2(0f, 0.5f);
+        inputRect.anchorMin = anchor;
+        inputRect.anchorMax = anchor;
+        inputRect.pivot = new Vector2(0f, 0.5f);
+        inputRect.anchoredPosition = LocalPointToAnchoredPosition(parent, new Vector2(left, centerLocal.y), anchor);
+        inputRect.sizeDelta = new Vector2(width, preferredHeight);
+        inputRect.localScale = Vector3.one;
+        inputRect.SetAsLastSibling();
+        UiLayoutRefreshQueue.Request(parent);
+        return true;
+    }
+
+    private static Vector2 LocalPointToAnchoredPosition(RectTransform parent, Vector2 localPoint, Vector2 anchor)
+    {
+        var anchorReference = new Vector2(
+            (anchor.x - parent.pivot.x) * parent.rect.width,
+            (anchor.y - parent.pivot.y) * parent.rect.height);
+        return localPoint - anchorReference;
+    }
 }
 
 internal sealed class InventorySearchBoxState : MonoBehaviour
@@ -221,7 +294,13 @@ internal sealed class InventorySearchBoxState : MonoBehaviour
         if (toggleRoot == null)
             return;
 
-        var parent = toggleRoot;
+        if (!InventorySearchBoxOptimizationSupport.TryFindLastActiveFilterToggleRect(toggleRoot, out var anchorToggle))
+        {
+            HideSearchBox();
+            return;
+        }
+
+        var parent = toggleRoot.parent as RectTransform ?? toggleRoot;
         if (_input == null)
             _input = CreateSearchInput(parent);
 
@@ -235,31 +314,24 @@ internal sealed class InventorySearchBoxState : MonoBehaviour
         _inputRect = _input.transform as RectTransform;
         var layoutElement = _input.GetComponent<LayoutElement>() ?? _input.gameObject.AddComponent<LayoutElement>();
         layoutElement.ignoreLayout = true;
-        RefreshSearchBoxLayout(toggleRoot);
+        RefreshSearchBoxLayout(parent, anchorToggle);
     }
 
-    private void RefreshSearchBoxLayout(RectTransform toggleRoot)
+    private void RefreshSearchBoxLayout(RectTransform parent, RectTransform anchorToggle)
     {
-        if (_inputRect == null || toggleRoot == null)
+        if (_inputRect == null || parent == null || anchorToggle == null)
             return;
 
-        Canvas.ForceUpdateCanvases();
-        LayoutRebuilder.ForceRebuildLayoutImmediate(toggleRoot);
-
-        var lineWidth = CalculateToggleLineWidth(toggleRoot);
-        if (lineWidth <= 0f)
+        if (!InventorySearchBoxOptimizationSupport.PositionSearchBoxAfterToggle(
+                _inputRect,
+                parent,
+                anchorToggle,
+                InventorySearchBoxOptimizationSupport.SearchWidthValue,
+                InventorySearchBoxOptimizationSupport.SearchHeightValue,
+                InventorySearchBoxOptimizationSupport.SearchGapValue))
         {
             HideSearchBox();
-            return;
         }
-
-        _inputRect.anchorMin = new Vector2(0f, 0.5f);
-        _inputRect.anchorMax = new Vector2(0f, 0.5f);
-        _inputRect.pivot = new Vector2(0f, 0.5f);
-        _inputRect.anchoredPosition = new Vector2(lineWidth + InventorySearchBoxOptimizationSupport.SearchGapValue, 0f);
-        _inputRect.sizeDelta = new Vector2(InventorySearchBoxOptimizationSupport.SearchWidthValue, InventorySearchBoxOptimizationSupport.SearchHeightValue);
-        _inputRect.localScale = Vector3.one;
-        _inputRect.SetAsLastSibling();
     }
 
     private static float CalculateToggleLineWidth(RectTransform toggleRoot)

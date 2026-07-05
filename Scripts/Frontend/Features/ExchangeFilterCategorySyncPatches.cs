@@ -32,24 +32,6 @@ internal static class SortAndFilterFirstToggleGroupCategorySyncPatch
     }
 }
 
-[HarmonyPatch(typeof(SortAndFilter), "SetDropdownOption")]
-internal static class SortAndFilterSetDropdownOptionCategorySyncPatch
-{
-    private static void Postfix(SortAndFilter __instance, int lineId, int menuId, int optionIndex)
-    {
-        ExchangeFilterCategorySyncSupport.OnInlineDropdownChanged(__instance, lineId, menuId, optionIndex);
-    }
-}
-
-[HarmonyPatch(typeof(SortAndFilter), "OnSectionSelectionChanged")]
-internal static class SortAndFilterSectionSelectionCategorySyncPatch
-{
-    private static void Postfix(SortAndFilter __instance, int lineId, int menuId, int selectedIndex)
-    {
-        ExchangeFilterCategorySyncSupport.OnInlineDropdownChanged(__instance, lineId, menuId, selectedIndex);
-    }
-}
-
 internal static class ExchangeFilterCategorySyncSupport
 {
     private static readonly FieldInfo FirstToggleGroupIndexField = AccessTools.Field(typeof(SortAndFilter), "_firstToggleGroupIndex");
@@ -109,57 +91,6 @@ internal static class ExchangeFilterCategorySyncSupport
         catch (Exception ex)
         {
             Debug.LogWarning("[BetterTaiwuScroll] Failed to sync exchange first toggle category: " + ex);
-        }
-        finally
-        {
-            _isSyncing = false;
-        }
-    }
-
-    internal static void OnInlineDropdownChanged(SortAndFilter source, int lineId, int menuId, int optionIndex)
-    {
-        if (!IsEnabled || _isSyncing || source == null)
-            return;
-
-        var sourceInline = InlineFilterButtonsController.Get(source);
-        if (sourceInline == null || !sourceInline.MatchesInlineRoot(lineId, menuId))
-            return;
-
-        if (!TryFindExchangePair(source, out var view, out _, out _, out _, out var destination))
-            return;
-
-        var destinationInline = InlineFilterButtonsController.GetOrAdd(destination);
-        if (destinationInline == null)
-            return;
-
-        destinationInline.Refresh();
-        if (!destinationInline.TryGetInlineRoot(out var destinationLineId, out var destinationMenuId))
-            return;
-
-        var destinationOptionIndex = optionIndex;
-        if (optionIndex >= 0)
-        {
-            if (!sourceInline.TryGetInlineOptionText(optionIndex, out var optionText))
-                return;
-
-            if (!destinationInline.TryFindInlineOptionByText(optionText, out destinationOptionIndex))
-            {
-                if (!destinationInline.HasInlineOriginalOption(optionIndex))
-                    return;
-
-                destinationOptionIndex = optionIndex;
-            }
-        }
-
-        try
-        {
-            _isSyncing = true;
-            destination.SetDropdownOption(destinationLineId, destinationMenuId, destinationOptionIndex);
-            RefreshDestinationAfterSyncedFilter(view, destination);
-        }
-        catch (Exception ex)
-        {
-            Debug.LogWarning("[BetterTaiwuScroll] Failed to sync exchange inline filter category: " + ex);
         }
         finally
         {
@@ -335,7 +266,6 @@ internal static class ExchangeFilterCategorySyncSupport
         if (view == null || destination == null)
             return;
 
-        InlineFilterButtonsController.Get(destination)?.Refresh();
         Traverse.Create(view).Method("RefreshPutButtons").GetValue();
     }
 }

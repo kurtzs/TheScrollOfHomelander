@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using FrameWork.UISystem.UIElements;
 using Game.Components.ListStyleGeneralScroll.Item;
+using Game.Components.SortAndFilter;
 using Game.Views.Exchange;
 using GameDataExtensions;
 using HarmonyLib;
@@ -46,10 +47,13 @@ internal static class ExchangeSearchBoxOptimizationSupport
 {
     internal const float SearchWidth = 210f;
     internal const float SearchHeight = 38f;
-    internal const float SearchGapY = 8f;
+    internal const float SearchGap = 10f;
+    internal const float LegacySearchGapY = 8f;
     internal const string SearchObjectPrefix = "BetterTaiwuScrollExchangeSearchBox";
 
     private static readonly FieldInfo ExchangeContainerField = AccessTools.Field(typeof(ViewExchangeBase), "exchangeContainer");
+    private static readonly FieldInfo FirstToggleGroupLineField = AccessTools.Field(typeof(SortAndFilter), "firstToggleGroupLine");
+    private static readonly FieldInfo ToggleRootField = AccessTools.Field(typeof(ToggleGroupLine), "toggleRoot");
     private static bool _isApplying;
 
     internal static bool IsApplying => _isApplying;
@@ -178,6 +182,36 @@ internal static class ExchangeSearchBoxOptimizationSupport
         return !string.IsNullOrEmpty(name)
                && name.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0;
     }
+
+    internal static bool TryFindFilterToggleAnchor(
+        ItemListScroll list,
+        out RectTransform parent,
+        out RectTransform anchorToggle)
+    {
+        parent = null;
+        anchorToggle = null;
+        if (list == null)
+            return false;
+
+        foreach (var owner in list.GetComponentsInChildren<SortAndFilter>(true))
+        {
+            if (owner == null)
+                continue;
+
+            var firstLine = FirstToggleGroupLineField?.GetValue(owner) as ToggleGroupLine;
+            var toggleRoot = firstLine == null ? null : ToggleRootField?.GetValue(firstLine) as RectTransform;
+            if (toggleRoot == null)
+                continue;
+
+            if (!InventorySearchBoxOptimizationSupport.TryFindLastActiveFilterToggleRect(toggleRoot, out anchorToggle))
+                continue;
+
+            parent = toggleRoot.parent as RectTransform ?? toggleRoot;
+            return parent != null;
+        }
+
+        return false;
+    }
 }
 
 internal sealed class ExchangeSearchBoxState : MonoBehaviour
@@ -271,10 +305,22 @@ internal sealed class ExchangePanelSearchBox
             return;
         }
 
-        var firstToggle = FindFirstVisibleToggle(pageGroup);
-        var firstRect = firstToggle == null ? null : firstToggle.transform as RectTransform;
-        var parent = firstRect == null ? null : firstRect.parent as RectTransform;
-        if (firstRect == null || parent == null)
+        var useLegacyWarehouseLayout = list.GetComponentInParent<ViewWarehouse>(true) != null;
+        RectTransform parent;
+        RectTransform anchor;
+        if (useLegacyWarehouseLayout)
+        {
+            var firstToggle = FindFirstVisibleToggle(pageGroup);
+            anchor = firstToggle == null ? null : firstToggle.transform as RectTransform;
+            parent = anchor == null ? null : anchor.parent as RectTransform;
+        }
+        else if (!ExchangeSearchBoxOptimizationSupport.TryFindFilterToggleAnchor(list, out parent, out anchor))
+        {
+            Hide();
+            return;
+        }
+
+        if (parent == null || anchor == null)
         {
             Hide();
             return;
@@ -295,7 +341,10 @@ internal sealed class ExchangePanelSearchBox
         var layout = _input.GetComponent<LayoutElement>() ?? _input.gameObject.AddComponent<LayoutElement>();
         layout.ignoreLayout = true;
 
-        RefreshLayout(parent, firstRect);
+        if (useLegacyWarehouseLayout)
+            RefreshLegacyWarehouseLayout(parent, anchor);
+        else
+            RefreshLayout(parent, anchor);
     }
 
     internal void SetSource(IReadOnlyList<ITradeableContent> source)
@@ -353,20 +402,42 @@ internal sealed class ExchangePanelSearchBox
         }
     }
 
-    private void RefreshLayout(RectTransform parent, RectTransform firstRect)
+    private void RefreshLayout(RectTransform parent, RectTransform anchorToggle)
+    {
+        if (_inputRect == null || parent == null || anchorToggle == null)
+            return;
+
+        if (!InventorySearchBoxOptimizationSupport.PositionSearchBoxAfterToggle(
+                _inputRect,
+                parent,
+                anchorToggle,
+                ExchangeSearchBoxOptimizationSupport.SearchWidth,
+                ExchangeSearchBoxOptimizationSupport.SearchHeight,
+                ExchangeSearchBoxOptimizationSupport.SearchGap))
+        {
+            Hide();
+        }
+    }
+
+    private void RefreshLegacyWarehouseLayout(RectTransform parent, RectTransform firstRect)
     {
         if (_inputRect == null || parent == null || firstRect == null)
             return;
 
-        Canvas.ForceUpdateCanvases();
-        LayoutRebuilder.ForceRebuildLayoutImmediate(parent);
-
         var firstWidth = Mathf.Max(firstRect.rect.width, LayoutUtility.GetPreferredWidth(firstRect));
         var firstHeight = Mathf.Max(firstRect.rect.height, LayoutUtility.GetPreferredHeight(firstRect));
+        if (firstWidth <= 0f || firstHeight <= 0f)
+        {
+            Canvas.ForceUpdateCanvases();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(parent);
+            firstWidth = Mathf.Max(firstRect.rect.width, LayoutUtility.GetPreferredWidth(firstRect));
+            firstHeight = Mathf.Max(firstRect.rect.height, LayoutUtility.GetPreferredHeight(firstRect));
+        }
+
         var centerX = firstRect.anchoredPosition.x + (0.5f - firstRect.pivot.x) * firstWidth;
         var topY = firstRect.anchoredPosition.y
                    + (1f - firstRect.pivot.y) * firstHeight
-                   + ExchangeSearchBoxOptimizationSupport.SearchGapY
+                   + ExchangeSearchBoxOptimizationSupport.LegacySearchGapY
                    + ExchangeSearchBoxOptimizationSupport.SearchHeight * 0.5f;
 
         _inputRect.anchorMin = firstRect.anchorMin;
@@ -378,6 +449,7 @@ internal sealed class ExchangePanelSearchBox
         _inputRect.anchoredPosition = new Vector2(centerX, topY);
         _inputRect.localScale = Vector3.one;
         _inputRect.SetAsLastSibling();
+        UiLayoutRefreshQueue.Request(parent);
     }
 
     private CToggle FindFirstVisibleToggle(CToggleGroup pageGroup)

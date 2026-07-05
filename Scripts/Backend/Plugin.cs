@@ -27,5 +27,9 @@ public sealed class Plugin : TaiwuRemakePlugin
         _harmony?.UnpatchSelf();
         _harmony = null;
         AdvanceMonthDiagnosticsRecorder.Reset();
+        AdvanceMonthActionTargetRangeCache.Reset();
+        AdvanceMonthActionRelationCache.Reset();
+        AdvanceMonthMetabolismHolderIndex.Reset();
+        AdvanceMonthSecretInformationRemoveBatch.Reset();
     }
 }

@@ -14,6 +14,7 @@ public sealed class Plugin : TaiwuRemakePlugin
     internal static string ModDirectory;
 
     internal static bool EnableCompactSortButtons = true;
+    internal static bool EnableFilterEntryFullRow = true;
     internal static bool EnableInlineFilterButtons = true;
     internal static bool EnableSimplifyFilterIcons = false;
     internal static bool EnableSimplifiedFilterIconUnderlines = false;
@@ -33,13 +34,14 @@ public sealed class Plugin : TaiwuRemakePlugin
     internal static bool EnableWarehouseSelfItemTextColor = true;
     internal static bool EnableExchangeBookSelfItemTextColor = true;
     internal static bool EnableExchangeSelfItemTextColor = true;
-    internal static bool EnableCombatTooltipDetail = true;
+    internal static bool EnableCombatTooltipDetail = false;
     internal static bool EnableInventorySearchBoxOptimization = true;
     internal static bool EnableContainerCompact = true;
     internal static bool EnableDefaultContainerCardMode = true;
-    internal static float InventoryContainerScale = 0.7f;
-    internal static float ExchangeContainerScale = 0.7f;
-    internal static float SkillContainerScale = 0.7f;
+    internal static int InventoryContainerLineCount = 10;
+    internal static int ExchangeContainerLineCount = 7;
+    internal static int SkillContainerLineCount = 4;
+    internal static int EquipCombatSkillContainerLineCount = 3;
     internal static bool EnableBestTool = true;
     internal static bool EnableMaxProductCount = true;
     internal static bool EnableFood = true;
@@ -91,6 +93,8 @@ public sealed class Plugin : TaiwuRemakePlugin
         LoadSettings(ModIdStr);
         ContinuousMakeUiController.RefreshAll();
         ContainerCompactPatches.RefreshAllActive(allowRestore: true);
+        FilterEntryFullRowLayoutSupport.RefreshAllActive(allowRestore: true);
+        InlineFilterButtonsController.RefreshAllActive(allowRestore: true);
         SimplifiedFilterToggleVisual.RefreshAllActive();
         PurchaseOptimizationUiController.RefreshAll();
         ExchangeFilterCategorySyncSupport.OnSettingChanged();
@@ -114,6 +118,8 @@ public sealed class Plugin : TaiwuRemakePlugin
         MapTileIconPositionSupport.RestoreAll();
         InventorySearchBoxOptimizationSupport.RestoreAll();
         ExchangeSearchBoxOptimizationSupport.RestoreAll();
+        InlineFilterButtonsController.RestoreAll();
+        FilterEntryFullRowLayoutSupport.RestoreAll();
         TooltipGradeBackgroundSpriteSupport.Clear();
         _harmony?.UnpatchSelf();
         _harmony = null;
@@ -122,7 +128,8 @@ public sealed class Plugin : TaiwuRemakePlugin
     private static void LoadSettings(string modIdStr)
     {
         LoadSetting(modIdStr, "compact_sort_buttons", ref EnableCompactSortButtons);
-        LoadSetting(modIdStr, "inline_filter_buttons", ref EnableInlineFilterButtons);
+        LoadSetting(modIdStr, "filter_entry_full_row", ref EnableFilterEntryFullRow);
+        LoadSettingDefault(modIdStr, "inline_filter_buttons", ref EnableInlineFilterButtons, true);
         LoadSetting(modIdStr, "simplify_filter_icons", ref EnableSimplifyFilterIcons);
         LoadSetting(modIdStr, "simplified_filter_icon_underlines", ref EnableSimplifiedFilterIconUnderlines);
         LoadSetting(modIdStr, "map_tile_icon_y_offset", ref EnableMapTileIconYOffset);
@@ -150,9 +157,14 @@ public sealed class Plugin : TaiwuRemakePlugin
         LoadSetting(modIdStr, "inventory_search_box_optimization", ref EnableInventorySearchBoxOptimization);
         LoadSetting(modIdStr, "container_compact", ref EnableContainerCompact);
         LoadSetting(modIdStr, "container_default_card_mode", ref EnableDefaultContainerCardMode);
-        LoadScaleSetting(modIdStr, "container_inventory_scale", ref InventoryContainerScale);
-        LoadScaleSetting(modIdStr, "container_exchange_scale", ref ExchangeContainerScale);
-        LoadScaleSetting(modIdStr, "container_skill_scale", ref SkillContainerScale);
+        LoadIntSetting(modIdStr, "container_inventory_line_count", ref InventoryContainerLineCount);
+        InventoryContainerLineCount = Mathf.Clamp(InventoryContainerLineCount, 7, 12);
+        LoadIntSetting(modIdStr, "container_exchange_line_count", ref ExchangeContainerLineCount);
+        ExchangeContainerLineCount = Mathf.Clamp(ExchangeContainerLineCount, 5, 10);
+        LoadIntSetting(modIdStr, "container_skill_line_count", ref SkillContainerLineCount);
+        SkillContainerLineCount = Mathf.Clamp(SkillContainerLineCount, 3, 7);
+        LoadIntSetting(modIdStr, "container_equip_combat_skill_line_count", ref EquipCombatSkillContainerLineCount);
+        EquipCombatSkillContainerLineCount = Mathf.Clamp(EquipCombatSkillContainerLineCount, 3, 7);
         LoadSetting(modIdStr, "best_tool", ref EnableBestTool);
         LoadSetting(modIdStr, "max_product_count", ref EnableMaxProductCount);
         LoadSetting(modIdStr, "food_enabled", ref EnableFood);
@@ -223,19 +235,6 @@ public sealed class Plugin : TaiwuRemakePlugin
             value = Convert.ToBoolean(entryDefaultValue);
     }
 
-    private static void LoadScaleSetting(string modIdStr, string key, ref float value)
-    {
-        var percent = Mathf.RoundToInt(value * 100f);
-        if (!ModManager.GetSetting(modIdStr, key, ref percent))
-        {
-            var entryValue = GetSettingEntryValue(modIdStr, key);
-            if (entryValue != null)
-                percent = Convert.ToInt32(entryValue);
-        }
-
-        value = ClampContainerScale(percent / 100f);
-    }
-
     private static void LoadIntSetting(string modIdStr, string key, ref int value)
     {
         if (ModManager.GetSetting(modIdStr, key, ref value))
@@ -244,15 +243,6 @@ public sealed class Plugin : TaiwuRemakePlugin
         var entryValue = GetSettingEntryValue(modIdStr, key);
         if (entryValue != null)
             value = Convert.ToInt32(entryValue);
-    }
-
-    private static float ClampContainerScale(float value)
-    {
-        if (value < 0.3f)
-            return 0.3f;
-        if (value > 1f)
-            return 1f;
-        return value;
     }
 
     private static object GetSettingEntryValue(string modIdStr, string key)

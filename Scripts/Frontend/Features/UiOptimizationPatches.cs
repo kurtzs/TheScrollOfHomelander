@@ -2,11 +2,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Text;
+using Game.Components.SortAndFilter;
 using HarmonyLib;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.UI;
 
 namespace BetterTaiwuScroll.Frontend;
 
@@ -131,6 +134,12 @@ internal static class CompactItemSortButtonGroupPatch
     private const float AncestorWidthMargin = 24f;
     private const int PreferSingleRowMaxButtonCount = 8;
 
+    private static readonly FieldInfo ItemRootField =
+        AccessTools.Field(typeof(Game.Components.SortAndFilter.SortButtonGroup), "itemRoot");
+
+    private static readonly FieldInfo FilterSummaryAreaField =
+        AccessTools.Field(typeof(Game.Components.SortAndFilter.SortAndFilter), "filterSummaryArea");
+
     private static readonly HashSet<string> ItemSortLabels = new()
     {
         "名称",
@@ -242,7 +251,7 @@ internal static class CompactItemSortButtonGroupPatch
         if (__instance == null || !Plugin.EnableCompactSortButtons)
             return false;
 
-        var itemRoot = Traverse.Create(__instance).Field("itemRoot").GetValue<RectTransform>();
+        var itemRoot = ItemRootField?.GetValue(__instance) as RectTransform;
         if (itemRoot == null)
             return false;
 
@@ -275,16 +284,9 @@ internal static class CompactItemSortButtonGroupPatch
             if (child == null || !child.gameObject.activeSelf)
                 continue;
 
-            var labels = child.GetComponentsInChildren<TextMeshProUGUI>(true);
-            foreach (var label in labels)
-            {
-                var text = label == null ? string.Empty : label.text?.Trim();
-                if (!string.IsNullOrEmpty(text) && ItemSortLabels.Contains(text))
-                {
-                    matched++;
-                    break;
-                }
-            }
+            var text = SortButtonTextCache.GetFirstText(child);
+            if (!string.IsNullOrEmpty(text) && ItemSortLabels.Contains(text))
+                matched++;
         }
 
         return matched >= Math.Min(3, GetActiveChildCount(itemRoot));
@@ -299,16 +301,9 @@ internal static class CompactItemSortButtonGroupPatch
             if (child == null || !child.gameObject.activeSelf)
                 continue;
 
-            var labels = child.GetComponentsInChildren<TextMeshProUGUI>(true);
-            foreach (var label in labels)
-            {
-                var text = label == null ? string.Empty : label.text?.Trim();
-                if (!string.IsNullOrEmpty(text) && TeamSortLabels.Contains(text))
-                {
-                    matched++;
-                    break;
-                }
-            }
+            var text = SortButtonTextCache.GetFirstText(child);
+            if (!string.IsNullOrEmpty(text) && TeamSortLabels.Contains(text))
+                matched++;
         }
 
         return matched >= Math.Min(3, GetActiveChildCount(itemRoot));
@@ -394,7 +389,7 @@ internal static class CompactItemSortButtonGroupPatch
             layoutElement.preferredHeight = CompactButtonHeight;
             layoutElement.flexibleHeight = 0f;
 
-            foreach (var label in child.GetComponentsInChildren<TextMeshProUGUI>(true))
+            foreach (var label in SortButtonTextCache.GetLabels(child))
             {
                 if (label == null)
                     continue;
@@ -414,9 +409,9 @@ internal static class CompactItemSortButtonGroupPatch
             }
         }
 
-        LayoutRebuilder.ForceRebuildLayoutImmediate(itemRoot);
+        UiLayoutRefreshQueue.Request(itemRoot);
         if (sortGroupRect != null)
-            LayoutRebuilder.ForceRebuildLayoutImmediate(sortGroupRect);
+            UiLayoutRefreshQueue.Request(sortGroupRect);
     }
 
     private static string BuildLayoutSignature(
@@ -445,16 +440,7 @@ internal static class CompactItemSortButtonGroupPatch
             if (child == null)
                 continue;
 
-            var labels = child.GetComponentsInChildren<TextMeshProUGUI>(true);
-            for (var j = 0; j < labels.Length; j++)
-            {
-                var text = labels[j] == null ? string.Empty : labels[j].text?.Trim();
-                if (!string.IsNullOrEmpty(text))
-                {
-                    builder.Append(text);
-                    break;
-                }
-            }
+            builder.Append(SortButtonTextCache.GetFirstText(child));
         }
 
         return builder.ToString();
@@ -462,11 +448,11 @@ internal static class CompactItemSortButtonGroupPatch
 
     private static bool HasVisibleFilterSummary(Game.Components.SortAndFilter.SortButtonGroup sortButtonGroup)
     {
-        var owner = sortButtonGroup == null ? null : sortButtonGroup.GetComponentInParent<SortAndFilter>(true);
+        var owner = sortButtonGroup == null ? null : sortButtonGroup.GetComponentInParent<Game.Components.SortAndFilter.SortAndFilter>(true);
         if (owner == null)
             return false;
 
-        var summaryArea = Traverse.Create(owner).Field("filterSummaryArea").GetValue<RectTransform>();
+        var summaryArea = FilterSummaryAreaField?.GetValue(owner) as RectTransform;
         return summaryArea != null && summaryArea.gameObject.activeInHierarchy;
     }
 
@@ -536,6 +522,36 @@ internal static class CompactItemSortButtonGroupPatch
         }
 
         return Mathf.Max(bestWidth, currentWidth);
+    }
+}
+
+internal sealed class SortButtonTextCache : MonoBehaviour
+{
+    private TextMeshProUGUI[] _labels;
+
+    internal static TextMeshProUGUI[] GetLabels(Transform transform)
+    {
+        if (transform == null)
+            return Array.Empty<TextMeshProUGUI>();
+
+        var cache = transform.GetComponent<SortButtonTextCache>();
+        if (cache == null)
+            cache = transform.gameObject.AddComponent<SortButtonTextCache>();
+
+        return cache._labels ??= transform.GetComponentsInChildren<TextMeshProUGUI>(true);
+    }
+
+    internal static string GetFirstText(Transform transform)
+    {
+        var labels = GetLabels(transform);
+        for (var i = 0; i < labels.Length; i++)
+        {
+            var text = labels[i] == null ? string.Empty : labels[i].text?.Trim();
+            if (!string.IsNullOrEmpty(text))
+                return text;
+        }
+
+        return string.Empty;
     }
 }
 
@@ -621,6 +637,15 @@ internal static class SimplifiedFilterToggleVisual
     internal const float SimplifiedHeight = 38f;
     internal const float SimplifiedSpacing = 4f;
 
+    private static readonly FieldInfo ToggleRootField =
+        AccessTools.Field(typeof(Game.Components.SortAndFilter.ToggleGroupLine), "toggleRoot");
+
+    private static readonly FieldInfo FirstToggleGroupLineField =
+        AccessTools.Field(typeof(Game.Components.SortAndFilter.SortAndFilter), "firstToggleGroupLine");
+
+    private static readonly FieldInfo FirstToggleGroupIndexField =
+        AccessTools.Field(typeof(Game.Components.SortAndFilter.SortAndFilter), "_firstToggleGroupIndex");
+
     internal static void ApplyFromRefresh(Game.Components.SortAndFilter.FilterToggle toggle, string labelText)
     {
         if (toggle == null)
@@ -662,17 +687,15 @@ internal static class SimplifiedFilterToggleVisual
         if (line == null)
             return;
 
-        var toggleRoot = Traverse.Create(line).Field("toggleRoot").GetValue<RectTransform>();
+        var toggleRoot = ToggleRootField?.GetValue(line) as RectTransform;
         if (toggleRoot == null)
             return;
 
         var rootState = toggleRoot.GetComponent<SimplifiedFilterToggleRootState>()
             ?? toggleRoot.gameObject.AddComponent<SimplifiedFilterToggleRootState>();
-        rootState.Apply(toggleRoot, Plugin.EnableSimplifyFilterIcons);
+        rootState.Apply(toggleRoot, Plugin.EnableSimplifyFilterIcons, Plugin.EnableSimplifyFilterIcons);
 
-        LayoutRebuilder.ForceRebuildLayoutImmediate(toggleRoot);
-        if (toggleRoot.parent is RectTransform parent)
-            LayoutRebuilder.ForceRebuildLayoutImmediate(parent);
+        UiLayoutRefreshQueue.Request(toggleRoot, parentDepth: 1);
     }
 
     private static bool HasFollowUpLine(Game.Components.SortAndFilter.FilterToggle toggle)
@@ -698,8 +721,8 @@ internal static class SimplifiedFilterToggleVisual
     private static bool TryResolveToggleLineId(SortAndFilter owner, Game.Components.SortAndFilter.ToggleGroupLine line, out int lineId)
     {
         lineId = default;
-        var firstToggleGroupLine = Traverse.Create(owner).Field("firstToggleGroupLine").GetValue<Game.Components.SortAndFilter.ToggleGroupLine>();
-        var firstToggleGroupIndex = Traverse.Create(owner).Field("_firstToggleGroupIndex").GetValue<int>();
+        var firstToggleGroupLine = FirstToggleGroupLineField?.GetValue(owner) as Game.Components.SortAndFilter.ToggleGroupLine;
+        var firstToggleGroupIndex = FirstToggleGroupIndexField?.GetValue(owner) is int index ? index : -1;
         if (firstToggleGroupLine == line
             && firstToggleGroupIndex >= 0
             && firstToggleGroupIndex < owner.Config.LineConfigs.Count)
@@ -714,7 +737,7 @@ internal static class SimplifiedFilterToggleVisual
             if (config.Type != Game.Components.SortAndFilter.ESortAndFilterOneLineType.ToggleGroup)
                 continue;
 
-            var toggleRoot = Traverse.Create(line).Field("toggleRoot").GetValue<RectTransform>();
+            var toggleRoot = ToggleRootField?.GetValue(line) as RectTransform;
             var toggleCount = toggleRoot == null ? 0 : toggleRoot.childCount - 1;
             var configCount = config.ToggleGroupLineConfig?.Config.FilterToggleConfigs?.Count ?? -1;
             if (toggleCount == configCount)
@@ -1226,42 +1249,59 @@ internal sealed class SimplifiedFilterToggleRootState : MonoBehaviour
     private float _originalHorizontalSpacing;
     private bool _originalChildControlWidth;
     private bool _originalChildForceExpandWidth;
+    private VerticalLayoutGroup _vertical;
+    private bool _originalVerticalEnabled;
     private bool _hasOriginal;
 
-    internal void Apply(RectTransform root, bool enabled)
+    internal void Apply(RectTransform root, bool forceSingleRow, bool simplifyChildren)
     {
         if (root == null)
             return;
 
         Capture(root);
-        if (!enabled)
+        if (!forceSingleRow && !simplifyChildren)
         {
             Restore();
             return;
         }
 
         var activeCount = CountActiveChildren(root);
-        if (_grid != null)
+        if (forceSingleRow)
         {
-            _grid.cellSize = new Vector2(SimplifiedFilterToggleVisual.SimplifiedWidth, Mathf.Max(_originalGridCellSize.y, SimplifiedFilterToggleVisual.SimplifiedHeight));
-            _grid.spacing = new Vector2(SimplifiedFilterToggleVisual.SimplifiedSpacing, _originalGridSpacing.y);
+            _grid ??= root.GetComponent<GridLayoutGroup>() ?? root.gameObject.AddComponent<GridLayoutGroup>();
+            if (_grid != null)
+            {
+                _grid.enabled = true;
+                _grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+                _grid.constraintCount = Math.Max(activeCount, 1);
+                _grid.cellSize = new Vector2(SimplifiedFilterToggleVisual.SimplifiedWidth, Mathf.Max(_originalGridCellSize.y, SimplifiedFilterToggleVisual.SimplifiedHeight));
+                _grid.spacing = new Vector2(SimplifiedFilterToggleVisual.SimplifiedSpacing, SimplifiedFilterToggleVisual.SimplifiedSpacing);
+                _grid.childAlignment = TextAnchor.UpperLeft;
+            }
+
+            if (_horizontal != null)
+            {
+                _horizontal.enabled = false;
+                _horizontal.spacing = SimplifiedFilterToggleVisual.SimplifiedSpacing;
+                _horizontal.childControlWidth = true;
+                _horizontal.childForceExpandWidth = false;
+            }
+
+            if (_vertical != null)
+                _vertical.enabled = false;
         }
 
-        if (_horizontal != null)
+        if (simplifyChildren)
         {
-            _horizontal.spacing = SimplifiedFilterToggleVisual.SimplifiedSpacing;
-            _horizontal.childControlWidth = true;
-            _horizontal.childForceExpandWidth = false;
+            for (var i = 0; i < root.childCount; i++)
+            {
+                var child = root.GetChild(i);
+                var state = child == null ? null : child.GetComponent<SimplifiedFilterToggleState>();
+                state?.ApplySimplifiedLayout();
+            }
         }
 
-        for (var i = 0; i < root.childCount; i++)
-        {
-            var child = root.GetChild(i);
-            var state = child == null ? null : child.GetComponent<SimplifiedFilterToggleState>();
-            state?.ApplySimplifiedLayout();
-        }
-
-        if (activeCount > 0)
+        if (forceSingleRow && activeCount > 0)
         {
             var width = activeCount * SimplifiedFilterToggleVisual.SimplifiedWidth
                 + Math.Max(activeCount - 1, 0) * SimplifiedFilterToggleVisual.SimplifiedSpacing;
@@ -1291,6 +1331,10 @@ internal sealed class SimplifiedFilterToggleRootState : MonoBehaviour
             _originalChildForceExpandWidth = _horizontal.childForceExpandWidth;
         }
 
+        _vertical = root.GetComponent<VerticalLayoutGroup>();
+        if (_vertical != null)
+            _originalVerticalEnabled = _vertical.enabled;
+
         _hasOriginal = true;
     }
 
@@ -1310,10 +1354,14 @@ internal sealed class SimplifiedFilterToggleRootState : MonoBehaviour
 
         if (_horizontal != null)
         {
+            _horizontal.enabled = true;
             _horizontal.spacing = _originalHorizontalSpacing;
             _horizontal.childControlWidth = _originalChildControlWidth;
             _horizontal.childForceExpandWidth = _originalChildForceExpandWidth;
         }
+
+        if (_vertical != null)
+            _vertical.enabled = _originalVerticalEnabled;
 
         if (_rect != null)
         {
@@ -1370,7 +1418,7 @@ internal static class SortAndFilterApplyLineStatesInlineFilterPatch
 [HarmonyPatch(typeof(SortAndFilter), "SetDropdownOption")]
 internal static class SortAndFilterSetDropdownOptionInlineFilterPatch
 {
-    private static void Postfix(SortAndFilter __instance, int lineId, int menuId, int optionIndex)
+    private static void Postfix(SortAndFilter __instance)
     {
         InlineFilterButtonsController.Get(__instance)?.Refresh();
     }
@@ -1451,35 +1499,36 @@ internal static class FilterPanelRefreshCountsInlineFilterPatch
 
 internal sealed class InlineFilterButtonsController : MonoBehaviour
 {
-    private const float InlinePanelHeight = 58f;
+    private const float InlinePanelHeight = 52f;
     private const float InlineButtonHeight = 38f;
     private const float InlineButtonMinWidth = 46f;
     private const float InlineButtonPreferredWidth = 60f;
     private const float InlineButtonMaxWidth = 96f;
     private const float InlineButtonSpacing = 4f;
-    private const float CompactParentSpacing = 12f;
     private const float CompactSummaryHeight = 34f;
     private const int DelayedLayoutRefreshFrames = 2;
+
+    private static readonly FieldInfo FilterPanelOwnerField = AccessTools.Field(typeof(FilterPanel), "_owner");
+    private static readonly FieldInfo OwnerFilterPanelField = AccessTools.Field(typeof(SortAndFilter), "filterPanel");
+    private static readonly FieldInfo OwnerSummaryAreaField = AccessTools.Field(typeof(SortAndFilter), "filterSummaryArea");
+    private static readonly FieldInfo OwnerSummaryRootField = AccessTools.Field(typeof(SortAndFilter), "filterSummaryRoot");
+    private static readonly FieldInfo OwnerForceHideEntryField = AccessTools.Field(typeof(SortAndFilter), "_forceHideEntry");
 
     private SortAndFilter _owner;
     private FilterPanel _filterPanel;
     private RectTransform _entryRect;
     private FilterSection _inlineSection;
-    private VerticalLayoutGroup _parentVerticalLayout;
-    private float _originalParentSpacing;
-    private bool _hasOriginalParentSpacing;
     private int _lineId;
     private int _lineIndex;
     private int _menuId;
     private bool _hasInlineRoot;
     private readonly List<int> _inlineOptionIndexMap = new();
-    private readonly HashSet<int> _inlineOptionsWithFollowUpMenus = new();
-    private bool _hideInlineAllOption;
     private bool _entryForceHiddenByInline;
     private bool _originalEntryForceHidden;
     private int _pendingLayoutRefreshFrames;
     private bool _showRootSectionInPanel;
     private string _lastRefreshSignature;
+    private readonly HashSet<int> _inlineOptionsWithFollowUpMenus = new();
 
     internal static InlineFilterButtonsController GetOrAdd(SortAndFilter owner)
     {
@@ -1501,8 +1550,28 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
 
     internal static InlineFilterButtonsController GetFromPanel(FilterPanel panel)
     {
-        var owner = panel == null ? null : Traverse.Create(panel).Field("_owner").GetValue<SortAndFilter>();
+        var owner = FilterPanelOwnerField?.GetValue(panel) as SortAndFilter;
         return Get(owner);
+    }
+
+    internal static void RefreshAllActive(bool allowRestore)
+    {
+        foreach (var owner in Resources.FindObjectsOfTypeAll<SortAndFilter>())
+        {
+            if (owner == null || !owner.gameObject.scene.IsValid())
+                continue;
+
+            if (Plugin.EnableInlineFilterButtons)
+                GetOrAdd(owner)?.Refresh();
+            else if (allowRestore)
+                Get(owner)?.Restore();
+        }
+    }
+
+    internal static void RestoreAll()
+    {
+        foreach (var controller in Resources.FindObjectsOfTypeAll<InlineFilterButtonsController>())
+            controller.Restore();
     }
 
     internal bool MatchesInlineRoot(int lineId, int menuId)
@@ -1591,10 +1660,10 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         return (text ?? string.Empty).Trim();
     }
 
-    internal void Initialize(SortAndFilter owner)
+    private void Initialize(SortAndFilter owner)
     {
         _owner = owner;
-        _filterPanel = Traverse.Create(owner).Field("filterPanel").GetValue<FilterPanel>();
+        _filterPanel = OwnerFilterPanelField?.GetValue(owner) as FilterPanel;
         var entryToggle = Traverse.Create(owner).Field("entryToggle").GetValue();
         _entryRect = entryToggle is Component component ? component.transform as RectTransform : null;
     }
@@ -1606,20 +1675,7 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
 
         if (!Plugin.EnableInlineFilterButtons)
         {
-            _hasInlineRoot = false;
-            _lastRefreshSignature = null;
-            RestoreEntryButton();
-            SetInlineActive(false);
-            return;
-        }
-
-        if (ShouldSuppressInlineFilterForMakeList())
-        {
-            _hasInlineRoot = false;
-            _lastRefreshSignature = null;
-            HideEntryButton();
-            SetInlineActive(false);
-            RefreshOwnerSummary();
+            Restore();
             return;
         }
 
@@ -1654,12 +1710,12 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         }
 
         _hasInlineRoot = true;
-        var inlineItemConfigs = BuildInlineItemConfigs(section, itemConfigs);
+        var inlineItemConfigs = BuildInlineItemConfigs(itemConfigs);
         var selectedOriginalIndex = _owner.GetInitialSectionState(_lineId, _menuId);
         var rect = _inlineSection.transform as RectTransform;
         var panelWidth = rect == null ? 0f : GetInlineAvailableWidth(rect);
-        var refreshSignature = BuildInlineRefreshSignature(section, inlineItemConfigs, selectedOriginalIndex, panelWidth);
-        if (_inlineSection.gameObject.activeInHierarchy && refreshSignature == _lastRefreshSignature)
+        var signature = BuildInlineRefreshSignature(section, inlineItemConfigs, selectedOriginalIndex, panelWidth);
+        if (_inlineSection.gameObject.activeInHierarchy && signature == _lastRefreshSignature)
         {
             _inlineSection.SetSelectedIndex(ToDisplayOptionIndex(selectedOriginalIndex), notify: false);
             FilterMultiSelectSupport.ApplySelectionVisuals(_inlineSection, _owner, _lineId, _menuId);
@@ -1675,7 +1731,46 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         AfterPanelRefresh();
         RefreshOwnerSummary();
         TuneSummaryAreaLayout();
-        _lastRefreshSignature = refreshSignature;
+        _lastRefreshSignature = signature;
+    }
+
+    private List<FilterDropdownItemConfig> BuildInlineItemConfigs(List<FilterDropdownItemConfig> itemConfigs)
+    {
+        _inlineOptionIndexMap.Clear();
+        if (itemConfigs == null)
+            return new List<FilterDropdownItemConfig>();
+
+        for (var i = 0; i < itemConfigs.Count; i++)
+            _inlineOptionIndexMap.Add(i);
+
+        return itemConfigs;
+    }
+
+    private int ToDisplayOptionIndex(int originalIndex)
+    {
+        if (originalIndex < 0)
+            return -1;
+
+        var displayIndex = _inlineOptionIndexMap.IndexOf(originalIndex);
+        return displayIndex >= 0 ? displayIndex : -1;
+    }
+
+    private int ToOriginalOptionIndex(int displayIndex)
+    {
+        if (displayIndex < 0)
+            return -1;
+
+        return displayIndex >= 0 && displayIndex < _inlineOptionIndexMap.Count
+            ? _inlineOptionIndexMap[displayIndex]
+            : displayIndex;
+    }
+
+    internal void Restore()
+    {
+        _hasInlineRoot = false;
+        _lastRefreshSignature = null;
+        RestoreEntryButton();
+        SetInlineActive(false);
     }
 
     private void LateUpdate()
@@ -1707,115 +1802,8 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
             ShowPanelRootSection();
         else
             HidePanelRootSection();
+
         TuneSummaryAreaLayout();
-    }
-
-    private List<FilterDropdownItemConfig> BuildInlineItemConfigs(SortAndFilter.SectionViewData section, List<FilterDropdownItemConfig> itemConfigs)
-    {
-        _inlineOptionIndexMap.Clear();
-        _hideInlineAllOption = false;
-
-        if (itemConfigs == null)
-            return new List<FilterDropdownItemConfig>();
-
-        if (IsMakeToolSection(section) && TryGetCurrentMakeLifeSkillType(out var lifeSkillType))
-        {
-            var filtered = new List<FilterDropdownItemConfig>();
-            for (var i = 0; i < itemConfigs.Count; i++)
-            {
-                if (IsLifeSkillOption(itemConfigs[i], lifeSkillType))
-                {
-                    _inlineOptionIndexMap.Add(i);
-                    filtered.Add(itemConfigs[i]);
-                }
-            }
-
-            if (filtered.Count > 0)
-            {
-                _hideInlineAllOption = filtered.Count == 1;
-                return filtered;
-            }
-        }
-
-        for (var i = 0; i < itemConfigs.Count; i++)
-            _inlineOptionIndexMap.Add(i);
-        return itemConfigs;
-    }
-
-    private string BuildInlineRefreshSignature(
-        SortAndFilter.SectionViewData section,
-        List<FilterDropdownItemConfig> itemConfigs,
-        int selectedOriginalIndex,
-        float panelWidth)
-    {
-        var builder = new StringBuilder(128);
-        builder.Append(section.LineId).Append('|')
-            .Append(section.LineIndex).Append('|')
-            .Append(section.MenuId).Append('|')
-            .Append(selectedOriginalIndex).Append('|')
-            .Append(Mathf.RoundToInt(panelWidth)).Append('|')
-            .Append(_hideInlineAllOption ? 1 : 0).Append('|')
-            .Append(itemConfigs == null ? 0 : itemConfigs.Count);
-
-        if (itemConfigs != null)
-        {
-            for (var i = 0; i < itemConfigs.Count; i++)
-                builder.Append('|').Append(itemConfigs[i].Text.GetString());
-        }
-
-        return builder.ToString();
-    }
-
-    private bool IsMakeToolSection(SortAndFilter.SectionViewData section)
-    {
-        return section.LineId == (int)Game.Components.SortAndFilter.Item.EFilterLine.CraftToolFilter && section.MenuId == 0;
-    }
-
-    private bool TryGetCurrentMakeLifeSkillType(out sbyte lifeSkillType)
-    {
-        var viewMake = _owner == null ? null : _owner.GetComponentInParent<Game.Views.Make.ViewMake>(true);
-        if (viewMake != null)
-        {
-            lifeSkillType = viewMake.CurLifeSkillType;
-            return true;
-        }
-
-        lifeSkillType = default;
-        return false;
-    }
-
-    private static bool IsLifeSkillOption(FilterDropdownItemConfig itemConfig, sbyte lifeSkillType)
-    {
-        Config.LifeSkillTypeItem lifeSkillTypeItem;
-        try
-        {
-            lifeSkillTypeItem = Config.LifeSkillType.Instance[lifeSkillType];
-        }
-        catch
-        {
-            return false;
-        }
-
-        return itemConfig.Text.GetString() == lifeSkillTypeItem.Name;
-    }
-
-    private int ToDisplayOptionIndex(int originalIndex)
-    {
-        if (originalIndex < 0)
-            return -1;
-
-        var displayIndex = _inlineOptionIndexMap.IndexOf(originalIndex);
-        return displayIndex >= 0 ? displayIndex : -1;
-    }
-
-    private int ToOriginalOptionIndex(int displayIndex)
-    {
-        if (displayIndex < 0)
-            return -1;
-
-        return displayIndex >= 0 && displayIndex < _inlineOptionIndexMap.Count
-            ? _inlineOptionIndexMap[displayIndex]
-            : displayIndex;
     }
 
     internal void RemoveInlineRootSummary(List<SortAndFilter.SummaryItemData> items)
@@ -1824,14 +1812,6 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
             return;
 
         items.RemoveAll(item => item.LineId == _lineId && item.MenuId == _menuId);
-    }
-
-    private void RefreshOwnerSummary()
-    {
-        if (_owner == null)
-            return;
-
-        Traverse.Create(_owner).Method("RefreshSummary").GetValue();
     }
 
     internal bool ContainsScreenPoint(Vector2 screenPoint)
@@ -1845,9 +1825,6 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
 
     private bool TryGetRootSection(out SortAndFilter.SectionViewData section, out DetailedFilterMenuConfig menuConfig)
     {
-        if (TryGetPreferredMakeSection(out section, out menuConfig))
-            return true;
-
         foreach (var candidate in _owner.Sections)
         {
             if (!candidate.IsActive || candidate.Type == Game.Components.SortAndFilter.ESortAndFilterOneLineType.ToggleGroup)
@@ -1858,7 +1835,8 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
                 continue;
 
             var config = maybeConfig.Value;
-            if (config.DropdownContext.Dependency.HasValue)
+            if (candidate.Type != Game.Components.SortAndFilter.ESortAndFilterOneLineType.ToggleGroup
+                && config.DropdownContext.Dependency.HasValue)
                 continue;
 
             section = candidate;
@@ -1871,66 +1849,16 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         return false;
     }
 
-    private bool TryGetPreferredMakeSection(out SortAndFilter.SectionViewData section, out DetailedFilterMenuConfig menuConfig)
-    {
-        if (!IsInMakeView())
-        {
-            section = default;
-            menuConfig = default;
-            return false;
-        }
-
-        if (TryFindSection((int)Game.Components.SortAndFilter.Item.EFilterLine.CraftToolFilter, 0, out section, out menuConfig))
-            return true;
-
-        return false;
-    }
-
-    private bool ShouldSuppressInlineFilterForMakeList()
-    {
-        if (!IsInMakeView())
-            return false;
-
-        return TryFindSection((int)Game.Components.SortAndFilter.Item.EFilterLine.MaterialAdditionalFilter, 1, out _, out _)
-            || TryFindSection((int)Game.Components.SortAndFilter.Item.EFilterLine.CraftToolFilter, 0, out _, out _);
-    }
-
-    private bool IsInMakeView()
-    {
-        return _owner != null && _owner.GetComponentInParent<Game.Views.Make.ViewMake>(true) != null;
-    }
-
-    private bool TryFindSection(int lineId, int menuId, out SortAndFilter.SectionViewData section, out DetailedFilterMenuConfig menuConfig)
-    {
-        foreach (var candidate in _owner.Sections)
-        {
-            if (!candidate.IsActive || candidate.LineId != lineId || candidate.MenuId != menuId)
-                continue;
-
-            var maybeConfig = _owner.GetMenuConfig(candidate.LineIndex, candidate.MenuId);
-            if (!maybeConfig.HasValue)
-                continue;
-
-            section = candidate;
-            menuConfig = maybeConfig.Value;
-            return true;
-        }
-
-        section = default;
-        menuConfig = default;
-        return false;
-    }
-
     private void EnsureInlineSection()
     {
         if (_filterPanel == null)
-            _filterPanel = Traverse.Create(_owner).Field("filterPanel").GetValue<FilterPanel>();
+            _filterPanel = OwnerFilterPanelField?.GetValue(_owner) as FilterPanel;
 
         var sectionTemplate = Traverse.Create(_filterPanel).Field("sectionTemplate").GetValue<FilterSection>();
         if (sectionTemplate == null || _entryRect == null)
             return;
 
-        var parent = GetInlineSectionParent(out var siblingIndex);
+        var parent = _entryRect.parent as RectTransform;
         if (parent == null)
             return;
 
@@ -1944,26 +1872,8 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
             _inlineSection.transform.SetParent(parent, false);
         }
 
-        _inlineSection.transform.SetSiblingIndex(siblingIndex);
+        _inlineSection.transform.SetSiblingIndex(_entryRect.GetSiblingIndex());
         _inlineSection.gameObject.SetActive(true);
-    }
-
-    private RectTransform GetInlineSectionParent(out int siblingIndex)
-    {
-        var entryParent = _entryRect == null ? null : _entryRect.parent as RectTransform;
-        siblingIndex = _entryRect == null ? 0 : _entryRect.GetSiblingIndex();
-        if (_owner == null || entryParent == null)
-            return entryParent;
-
-        var sortButtonGroup = Traverse.Create(_owner).Field("sortButtonGroup").GetValue<Game.Components.SortAndFilter.SortButtonGroup>();
-        var sortRect = sortButtonGroup == null ? null : sortButtonGroup.transform as RectTransform;
-        if (sortRect != null && sortRect.parent == entryParent && entryParent.parent is RectTransform rowParent)
-        {
-            siblingIndex = entryParent.GetSiblingIndex();
-            return rowParent;
-        }
-
-        return entryParent;
     }
 
     private void ApplyInlineLayout()
@@ -1975,22 +1885,10 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         if (rect == null)
             return;
 
-        TuneParentLayout(rect.parent as RectTransform);
-        var inlineInOriginalRow = rect.parent == _entryRect.parent;
-        if (inlineInOriginalRow)
-        {
-            rect.anchorMin = _entryRect.anchorMin;
-            rect.anchorMax = _entryRect.anchorMax;
-            rect.pivot = _entryRect.pivot;
-            rect.anchoredPosition = _entryRect.anchoredPosition;
-        }
-        else
-        {
-            rect.anchorMin = new Vector2(0f, 1f);
-            rect.anchorMax = new Vector2(1f, 1f);
-            rect.pivot = new Vector2(0.5f, 1f);
-            rect.anchoredPosition = Vector2.zero;
-        }
+        rect.anchorMin = _entryRect.anchorMin;
+        rect.anchorMax = _entryRect.anchorMax;
+        rect.pivot = _entryRect.pivot;
+        rect.anchoredPosition = _entryRect.anchoredPosition;
         rect.localScale = Vector3.one;
 
         var contentRoot = _inlineSection.GetContentRoot();
@@ -2001,7 +1899,7 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         contentRoot.anchorMax = Vector2.one;
         contentRoot.offsetMin = Vector2.zero;
         contentRoot.offsetMax = Vector2.zero;
-        ApplyInlineOptionVisibility(contentRoot);
+        ApplyInlineOptionTextLayout(contentRoot);
         ApplyShortInlineLabels(contentRoot);
         ApplyInlineFollowUpUnderlines(contentRoot);
         AttachInlineClickRelays(contentRoot);
@@ -2026,6 +1924,7 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
 
         rect.sizeDelta = new Vector2(panelWidth, panelHeight);
         var layoutElement = rect.GetComponent<LayoutElement>() ?? rect.gameObject.AddComponent<LayoutElement>();
+        layoutElement.ignoreLayout = false;
         layoutElement.minHeight = panelHeight;
         layoutElement.preferredHeight = panelHeight;
         layoutElement.minWidth = panelWidth;
@@ -2033,23 +1932,8 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         layoutElement.flexibleHeight = 0f;
         layoutElement.flexibleWidth = 0f;
 
-        LayoutRebuilder.ForceRebuildLayoutImmediate(contentRoot);
-        LayoutRebuilder.ForceRebuildLayoutImmediate(rect);
-        ForceRebuildInlineLayoutChain();
-    }
-
-    private void ForceRebuildInlineLayoutChain()
-    {
-        Canvas.ForceUpdateCanvases();
-
-        var current = _inlineSection == null ? null : _inlineSection.transform as RectTransform;
-        var depth = 0;
-        while (current != null && depth < 6)
-        {
-            LayoutRebuilder.ForceRebuildLayoutImmediate(current);
-            current = current.parent as RectTransform;
-            depth++;
-        }
+        UiLayoutRefreshQueue.Request(contentRoot);
+        UiLayoutRefreshQueue.Request(rect, parentDepth: 6, forceCanvas: true);
     }
 
     private void TuneSummaryAreaLayout()
@@ -2057,7 +1941,7 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         if (_owner == null)
             return;
 
-        var summaryArea = Traverse.Create(_owner).Field("filterSummaryArea").GetValue<RectTransform>();
+        var summaryArea = OwnerSummaryAreaField?.GetValue(_owner) as RectTransform;
         if (summaryArea == null || !summaryArea.gameObject.activeSelf)
             return;
 
@@ -2067,16 +1951,20 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         layoutElement.preferredHeight = CompactSummaryHeight;
         layoutElement.flexibleHeight = 0f;
 
-        var summaryRoot = Traverse.Create(_owner).Field("filterSummaryRoot").GetValue<RectTransform>();
+        var summaryRoot = OwnerSummaryRootField?.GetValue(_owner) as RectTransform;
         if (summaryRoot != null)
-            LayoutRebuilder.ForceRebuildLayoutImmediate(summaryRoot);
+            UiLayoutRefreshQueue.Request(summaryRoot);
 
-        LayoutRebuilder.ForceRebuildLayoutImmediate(summaryArea);
+        UiLayoutRefreshQueue.Request(summaryArea);
     }
 
     private static int CalculateInlineColumnCount(float availableWidth, int activeCount)
     {
         if (availableWidth <= 0f)
+            return activeCount;
+
+        var oneRowMinWidth = activeCount * InlineButtonMinWidth + InlineButtonSpacing * Math.Max(activeCount - 1, 0);
+        if (oneRowMinWidth <= availableWidth)
             return activeCount;
 
         var preferredColumns = Mathf.FloorToInt((availableWidth + InlineButtonSpacing) / (InlineButtonPreferredWidth + InlineButtonSpacing));
@@ -2092,8 +1980,56 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
             width = Mathf.Abs(rect.rect.width);
         if (rect.parent is RectTransform parent)
             width = Mathf.Max(width, Mathf.Abs(parent.rect.width));
+        if (_owner != null && _entryRect != null)
+            width = Mathf.Max(width, GetLargestOwnerLocalAncestorWidth(_entryRect));
 
         return Mathf.Max(width, InlineButtonMinWidth);
+    }
+
+    private float GetLargestOwnerLocalAncestorWidth(RectTransform start)
+    {
+        var width = 0f;
+        var ownerTransform = _owner == null ? null : _owner.transform;
+        for (var current = start; current != null; current = current.parent as RectTransform)
+        {
+            width = Mathf.Max(width, Mathf.Abs(current.rect.width));
+            if (ReferenceEquals(current, ownerTransform))
+                break;
+        }
+
+        return width;
+    }
+
+    private static void ApplyInlineOptionTextLayout(RectTransform contentRoot)
+    {
+        if (contentRoot == null)
+            return;
+
+        for (var i = 0; i < contentRoot.childCount; i++)
+        {
+            var child = contentRoot.GetChild(i);
+            if (child == null || !child.gameObject.activeSelf)
+                continue;
+
+            foreach (var label in child.GetComponentsInChildren<TextMeshProUGUI>(true))
+            {
+                if (label == null)
+                    continue;
+
+                var labelRect = label.transform as RectTransform;
+                if (labelRect != null)
+                {
+                    labelRect.anchorMin = Vector2.zero;
+                    labelRect.anchorMax = Vector2.one;
+                    labelRect.offsetMin = new Vector2(2f, 0f);
+                    labelRect.offsetMax = new Vector2(-2f, 0f);
+                    labelRect.pivot = new Vector2(0.5f, 0.5f);
+                }
+
+                label.alignment = TextAlignmentOptions.Center;
+                label.enableWordWrapping = false;
+            }
+        }
     }
 
     private void ApplyShortInlineLabels(RectTransform contentRoot)
@@ -2149,16 +2085,6 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         }
     }
 
-    private void ApplyInlineOptionVisibility(RectTransform contentRoot)
-    {
-        if (contentRoot == null || contentRoot.childCount == 0)
-            return;
-
-        var allOption = contentRoot.GetChild(0);
-        if (allOption != null)
-            allOption.gameObject.SetActive(!_hideInlineAllOption);
-    }
-
     private void AttachInlineClickRelays(RectTransform contentRoot)
     {
         if (contentRoot == null)
@@ -2167,7 +2093,7 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         for (var i = 0; i < contentRoot.childCount; i++)
         {
             var child = contentRoot.GetChild(i);
-            if (child == null)
+            if (child == null || !child.gameObject.activeSelf)
                 continue;
 
             var relay = child.GetComponent<InlineFilterOptionClickRelay>() ?? child.gameObject.AddComponent<InlineFilterOptionClickRelay>();
@@ -2179,11 +2105,7 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
     private void RefreshInlineFollowUpOptionSet()
     {
         _inlineOptionsWithFollowUpMenus.Clear();
-        if (_owner == null)
-            return;
-
-        var menuConfigMap = new Dictionary<int, DetailedFilterMenuConfig>();
-        if (_owner.Config?.LineConfigs == null || _lineIndex < 0 || _lineIndex >= _owner.Config.LineConfigs.Count)
+        if (_owner == null || _owner.Config?.LineConfigs == null || _lineIndex < 0 || _lineIndex >= _owner.Config.LineConfigs.Count)
             return;
 
         var lineConfig = _owner.Config.LineConfigs[_lineIndex];
@@ -2191,14 +2113,12 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         if (menuConfigs == null)
             return;
 
+        var menuConfigMap = new Dictionary<int, DetailedFilterMenuConfig>();
         foreach (var menuConfig in menuConfigs)
         {
             var maybeConfig = _owner.GetMenuConfig(_lineIndex, menuConfig.Id);
             menuConfigMap[menuConfig.Id] = maybeConfig ?? menuConfig;
         }
-
-        if (menuConfigMap.Count == 0)
-            return;
 
         foreach (var entry in menuConfigMap)
         {
@@ -2206,16 +2126,16 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
             if (!dependency.HasValue)
                 continue;
 
-            for (var i = 0; i < _inlineOptionIndexMap.Count; i++)
+            var itemConfigs = menuConfigMap.TryGetValue(_menuId, out var rootMenu)
+                ? rootMenu.DropdownConfig.ItemConfigs
+                : null;
+            var count = itemConfigs?.Count ?? 0;
+            for (var i = 0; i < count; i++)
             {
-                var originalOptionIndex = _inlineOptionIndexMap[i];
-                if (DoesMenuDependOnOption(entry.Value, _menuId, originalOptionIndex, menuConfigMap, null))
-                    _inlineOptionsWithFollowUpMenus.Add(originalOptionIndex);
+                if (DoesMenuDependOnOption(entry.Value, _menuId, i, menuConfigMap, null))
+                    _inlineOptionsWithFollowUpMenus.Add(i);
             }
         }
-
-        if (_owner.Config?.LineConfigs == null)
-            return;
 
         for (var i = 0; i < _inlineOptionIndexMap.Count; i++)
         {
@@ -2284,45 +2204,13 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         HidePanelRootSection();
     }
 
-    private static int CountActiveChildren(RectTransform root)
-    {
-        var count = 0;
-        for (var i = 0; i < root.childCount; i++)
-        {
-            var child = root.GetChild(i);
-            if (child != null && child.gameObject.activeSelf)
-                count++;
-        }
-
-        return count;
-    }
-    private void TuneParentLayout(RectTransform parent)
-    {
-        if (parent == null)
-            return;
-
-        var verticalLayout = parent.GetComponent<VerticalLayoutGroup>();
-        if (verticalLayout == null)
-            return;
-
-        if (!_hasOriginalParentSpacing || _parentVerticalLayout != verticalLayout)
-        {
-            _parentVerticalLayout = verticalLayout;
-            _originalParentSpacing = verticalLayout.spacing;
-            _hasOriginalParentSpacing = true;
-        }
-
-        verticalLayout.spacing = Math.Min(_originalParentSpacing, CompactParentSpacing);
-    }
-
     private void OnInlineSelectionChanged(int selectedIndex)
     {
         if (_owner == null)
             return;
 
         _showRootSectionInPanel = false;
-        selectedIndex = ToOriginalOptionIndex(selectedIndex);
-        _owner.SetDropdownOption(_lineId, _menuId, selectedIndex);
+        _owner.SetDropdownOption(_lineId, _menuId, ToOriginalOptionIndex(selectedIndex));
         _owner.CloseFilterPanel();
     }
 
@@ -2332,16 +2220,6 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         if (originalIndex >= 0 && _inlineOptionsWithFollowUpMenus.Contains(originalIndex))
             return true;
 
-        if (_owner?.Config?.LineConfigs != null
-            && originalIndex >= 0
-            && SimplifiedFilterToggleVisual.HasLineDependingOnToggle(_owner.Config.LineConfigs, _lineId, originalIndex))
-            return true;
-
-        return HasActiveFollowUpSections();
-    }
-
-    private bool HasActiveFollowUpSections()
-    {
         foreach (var section in _owner.Sections)
         {
             if (!section.IsActive || section.Type == Game.Components.SortAndFilter.ESortAndFilterOneLineType.ToggleGroup)
@@ -2365,9 +2243,7 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         if (sectionMap == null)
             return;
 
-        if (sectionMap.TryGetValue((_lineId, _menuId), out var rootSection)
-            && rootSection != null
-            && rootSection != _inlineSection)
+        if (sectionMap.TryGetValue((_lineId, _menuId), out var rootSection) && rootSection != null && rootSection != _inlineSection)
             rootSection.gameObject.SetActive(false);
     }
 
@@ -2382,9 +2258,7 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         if (sectionMap == null)
             return;
 
-        if (sectionMap.TryGetValue((_lineId, _menuId), out var rootSection)
-            && rootSection != null
-            && rootSection != _inlineSection)
+        if (sectionMap.TryGetValue((_lineId, _menuId), out var rootSection) && rootSection != null && rootSection != _inlineSection)
             rootSection.gameObject.SetActive(true);
     }
 
@@ -2392,7 +2266,7 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
     {
         if (_owner != null && !_entryForceHiddenByInline)
         {
-            _originalEntryForceHidden = Traverse.Create(_owner).Field("_forceHideEntry").GetValue<bool>();
+            _originalEntryForceHidden = OwnerForceHideEntryField?.GetValue(_owner) is bool hidden && hidden;
             _owner.SetEntryButtonForceHidden(true);
             _entryForceHiddenByInline = true;
         }
@@ -2406,7 +2280,6 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         if (_owner == null)
             return;
 
-        RestoreParentLayout();
         if (_entryForceHiddenByInline)
         {
             _owner.SetEntryButtonForceHidden(_originalEntryForceHidden);
@@ -2416,14 +2289,8 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         if (_entryRect == null)
             return;
 
-        var forceHideEntry = Traverse.Create(_owner).Field("_forceHideEntry").GetValue<bool>();
+        var forceHideEntry = OwnerForceHideEntryField?.GetValue(_owner) is bool hidden && hidden;
         _entryRect.gameObject.SetActive(!forceHideEntry && _owner.ShowFilterEntryButton);
-    }
-
-    private void RestoreParentLayout()
-    {
-        if (_hasOriginalParentSpacing && _parentVerticalLayout != null)
-            _parentVerticalLayout.spacing = _originalParentSpacing;
     }
 
     private void SetInlineActive(bool active)
@@ -2435,6 +2302,50 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
             _pendingLayoutRefreshFrames = 0;
             _showRootSectionInPanel = false;
         }
+    }
+
+    private void RefreshOwnerSummary()
+    {
+        if (_owner == null)
+            return;
+
+        Traverse.Create(_owner).Method("RefreshSummary").GetValue();
+    }
+
+    private string BuildInlineRefreshSignature(
+        SortAndFilter.SectionViewData section,
+        List<FilterDropdownItemConfig> itemConfigs,
+        int selectedIndex,
+        float panelWidth)
+    {
+        var builder = new StringBuilder(128);
+        builder.Append(section.LineId).Append('|')
+            .Append(section.LineIndex).Append('|')
+            .Append(section.MenuId).Append('|')
+            .Append(selectedIndex).Append('|')
+            .Append(Mathf.RoundToInt(panelWidth)).Append('|')
+            .Append(itemConfigs == null ? 0 : itemConfigs.Count);
+
+        if (itemConfigs != null)
+        {
+            for (var i = 0; i < itemConfigs.Count; i++)
+                builder.Append('|').Append(itemConfigs[i].Text.GetString());
+        }
+
+        return builder.ToString();
+    }
+
+    private static int CountActiveChildren(RectTransform root)
+    {
+        var count = 0;
+        for (var i = 0; i < root.childCount; i++)
+        {
+            var child = root.GetChild(i);
+            if (child != null && child.gameObject.activeSelf)
+                count++;
+        }
+
+        return count;
     }
 }
 
@@ -2459,5 +2370,650 @@ internal sealed class InlineFilterOptionClickRelay : MonoBehaviour, IPointerDown
     {
         if (_wasSelectedOnPointerDown)
             _owner?.OnInlineDisplayOptionRepeatedClick(_displayIndex);
+    }
+}
+
+[HarmonyPatch(typeof(SortAndFilter), "Setup")]
+internal static class SortAndFilterSetupFilterEntryFullRowPatch
+{
+    private static void Postfix(SortAndFilter __instance)
+    {
+        FilterEntryFullRowLayoutSupport.Apply(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(SortAndFilter), "RefreshEntryVisibility")]
+internal static class SortAndFilterRefreshEntryVisibilityFullRowPatch
+{
+    private static void Postfix(SortAndFilter __instance)
+    {
+        FilterEntryFullRowLayoutSupport.Apply(__instance);
+    }
+}
+
+internal static class FilterEntryFullRowLayoutSupport
+{
+    private const string RowName = "BetterTaiwuScrollFilterEntryRow";
+    private const float RowHeight = 56f;
+    private const float HorizontalPadding = 0f;
+
+    private static readonly FieldInfo EntryToggleField =
+        AccessTools.Field(typeof(SortAndFilter), "entryToggle");
+
+    private static readonly FieldInfo FirstToggleGroupLineField =
+        AccessTools.Field(typeof(SortAndFilter), "firstToggleGroupLine");
+
+    internal static void Apply(SortAndFilter owner)
+    {
+        if (owner == null)
+            return;
+
+        var state = owner.GetComponent<FilterEntryFullRowLayoutState>()
+            ?? owner.gameObject.AddComponent<FilterEntryFullRowLayoutState>();
+
+        if (!Plugin.EnableFilterEntryFullRow)
+        {
+            state.Restore();
+            return;
+        }
+
+        if (!HasInlineRootCandidate(owner))
+        {
+            state.Restore();
+            return;
+        }
+
+        var entryToggle = EntryToggleField?.GetValue(owner) as Component;
+        var firstToggleGroupLine = FirstToggleGroupLineField?.GetValue(owner) as Component;
+        state.Apply(owner, entryToggle, firstToggleGroupLine);
+    }
+
+    internal static bool HasInlineRootCandidate(SortAndFilter owner)
+    {
+        if (owner?.Config?.LineConfigs == null || owner.Sections == null)
+            return false;
+
+        foreach (var candidate in owner.Sections)
+        {
+            if (!candidate.IsActive || candidate.Type == Game.Components.SortAndFilter.ESortAndFilterOneLineType.ToggleGroup)
+                continue;
+
+            if (candidate.LineIndex < 0 || candidate.LineIndex >= owner.Config.LineConfigs.Count)
+                continue;
+
+            var lineConfig = owner.Config.LineConfigs[candidate.LineIndex];
+            if (lineConfig.Type == Game.Components.SortAndFilter.ESortAndFilterOneLineType.ToggleGroup)
+                continue;
+
+            var menuConfigs = lineConfig.DetailedFilterLineConfig?.Config.MenuConfigs;
+            if (menuConfigs == null || menuConfigs.Count == 0)
+                continue;
+
+            var maybeConfig = owner.GetMenuConfig(candidate.LineIndex, candidate.MenuId);
+            if (!maybeConfig.HasValue)
+                continue;
+
+            var menuConfig = maybeConfig.Value;
+            if (menuConfig.DropdownContext.Dependency.HasValue)
+                continue;
+
+            var itemConfigs = menuConfig.DropdownConfig.ItemConfigs;
+            if (itemConfigs != null && itemConfigs.Count > 0)
+                return true;
+        }
+
+        return false;
+    }
+
+    internal static void RefreshAllActive(bool allowRestore)
+    {
+        foreach (var owner in Resources.FindObjectsOfTypeAll<SortAndFilter>())
+        {
+            if (owner == null)
+                continue;
+
+            if (Plugin.EnableFilterEntryFullRow)
+                Apply(owner);
+            else if (allowRestore)
+                owner.GetComponent<FilterEntryFullRowLayoutState>()?.Restore();
+        }
+    }
+
+    internal static void RestoreAll()
+    {
+        foreach (var state in Resources.FindObjectsOfTypeAll<FilterEntryFullRowLayoutState>())
+            state.Restore();
+    }
+
+    internal static bool LooksLikeHorizontalContainer(RectTransform parent)
+    {
+        if (parent == null)
+            return false;
+
+        var horizontal = parent.GetComponent<HorizontalLayoutGroup>();
+        if (horizontal != null && horizontal.enabled)
+            return true;
+
+        var grid = parent.GetComponent<GridLayoutGroup>();
+        if (grid != null && grid.enabled && grid.constraint == GridLayoutGroup.Constraint.FixedRowCount)
+            return true;
+
+        return false;
+    }
+
+    internal static void PrepareFullWidthRow(RectTransform row, RectTransform sourceParent, RectTransform reference)
+    {
+        if (row == null)
+            return;
+
+        row.name = RowName;
+        row.anchorMin = new Vector2(0f, 1f);
+        row.anchorMax = new Vector2(1f, 1f);
+        row.pivot = new Vector2(0.5f, 1f);
+        row.offsetMin = new Vector2(HorizontalPadding, row.offsetMin.y);
+        row.offsetMax = new Vector2(-HorizontalPadding, row.offsetMax.y);
+        row.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, RowHeight);
+
+        var layout = row.GetComponent<HorizontalLayoutGroup>() ?? row.gameObject.AddComponent<HorizontalLayoutGroup>();
+        layout.enabled = true;
+        layout.padding = new RectOffset(0, 0, 0, 0);
+        layout.spacing = 0f;
+        layout.childAlignment = TextAnchor.MiddleLeft;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+
+        var fitter = row.GetComponent<ContentSizeFitter>();
+        if (fitter != null)
+            UnityEngine.Object.Destroy(fitter);
+
+        var layoutElement = row.GetComponent<LayoutElement>() ?? row.gameObject.AddComponent<LayoutElement>();
+        layoutElement.minWidth = -1f;
+        layoutElement.preferredWidth = -1f;
+        layoutElement.flexibleWidth = 1f;
+        layoutElement.minHeight = RowHeight;
+        layoutElement.preferredHeight = RowHeight;
+        layoutElement.flexibleHeight = 0f;
+
+        if (sourceParent != null)
+        {
+            row.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, sourceParent.rect.width);
+            if (!ParentUsesLayout(sourceParent) && reference != null)
+            {
+                var bounds = RectTransformUtility.CalculateRelativeRectTransformBounds(sourceParent, reference);
+                var targetTopY = bounds.min.y - 4f;
+                row.anchoredPosition = new Vector2(0f, targetTopY - sourceParent.rect.yMax);
+            }
+        }
+    }
+
+    internal static bool ParentUsesLayout(RectTransform parent)
+    {
+        if (parent == null)
+            return false;
+
+        var horizontal = parent.GetComponent<HorizontalLayoutGroup>();
+        if (horizontal != null && horizontal.enabled)
+            return true;
+
+        var vertical = parent.GetComponent<VerticalLayoutGroup>();
+        if (vertical != null && vertical.enabled)
+            return true;
+
+        var grid = parent.GetComponent<GridLayoutGroup>();
+        return grid != null && grid.enabled;
+    }
+
+    internal static bool IsSameVisualRow(RectTransform first, RectTransform second, RectTransform relativeTo)
+    {
+        if (first == null || second == null || relativeTo == null)
+            return false;
+
+        var firstBounds = RectTransformUtility.CalculateRelativeRectTransformBounds(relativeTo, first);
+        var secondBounds = RectTransformUtility.CalculateRelativeRectTransformBounds(relativeTo, second);
+        var firstCenter = (firstBounds.min.y + firstBounds.max.y) * 0.5f;
+        var secondCenter = (secondBounds.min.y + secondBounds.max.y) * 0.5f;
+        var firstHeight = Mathf.Max(firstBounds.size.y, 1f);
+        var secondHeight = Mathf.Max(secondBounds.size.y, 1f);
+        return Mathf.Abs(firstCenter - secondCenter) <= Mathf.Max(firstHeight, secondHeight) * 0.65f;
+    }
+
+    internal static RectTransform FindCommonAncestor(RectTransform first, RectTransform second)
+    {
+        if (first == null || second == null)
+            return null;
+
+        var ancestors = new HashSet<Transform>();
+        for (var current = first; current != null; current = current.parent as RectTransform)
+            ancestors.Add(current);
+
+        for (var current = second; current != null; current = current.parent as RectTransform)
+        {
+            if (ancestors.Contains(current))
+                return current;
+        }
+
+        return null;
+    }
+
+    internal static RectTransform FindDirectChildUnder(RectTransform ancestor, RectTransform descendant)
+    {
+        if (ancestor == null || descendant == null || ReferenceEquals(ancestor, descendant))
+            return descendant;
+
+        var current = descendant;
+        var parent = current.parent as RectTransform;
+        while (parent != null && !ReferenceEquals(parent, ancestor))
+        {
+            current = parent;
+            parent = current.parent as RectTransform;
+        }
+
+        return ReferenceEquals(parent, ancestor) ? current : null;
+    }
+}
+
+internal sealed class FilterEntryFullRowLayoutState : MonoBehaviour
+{
+    private const float RowSpacing = 4f;
+    private const float FallbackToggleRowHeight = 42f;
+    private const float FallbackEntryRowHeight = 52f;
+
+    private RectTransform _entryRect;
+    private RectTransform _toggleLineRect;
+    private RectTransform _entryBranch;
+    private RectTransform _toggleBranch;
+    private RectTransform _rowContainer;
+    private RectTransform _layoutParent;
+    private RectTransform _entryOriginalParent;
+    private int _entryBranchOriginalSiblingIndex;
+    private int _toggleBranchOriginalSiblingIndex;
+    private HorizontalLayoutGroup _horizontalLayout;
+    private VerticalLayoutGroup _verticalLayout;
+    private bool _originalHorizontalEnabled;
+    private bool _hadVerticalLayout;
+    private bool _originalVerticalEnabled;
+    private LayoutGroupSnapshot _verticalLayoutSnapshot;
+    private LayoutElementSnapshot _rowContainerLayoutSnapshot;
+    private LayoutElementSnapshot _entryBranchLayoutSnapshot;
+    private LayoutElementSnapshot _toggleBranchLayoutSnapshot;
+    private LayoutElementSnapshot _entryLayoutSnapshot;
+    private bool _hasOriginal;
+    private int _applyFrames;
+
+    internal void Apply(SortAndFilter owner, Component entryToggle, Component firstToggleGroupLine)
+    {
+        if (owner == null || entryToggle == null || firstToggleGroupLine == null)
+        {
+            Restore();
+            return;
+        }
+
+        _entryRect = entryToggle.transform as RectTransform;
+        _toggleLineRect = firstToggleGroupLine.transform as RectTransform;
+        if (_entryRect == null || _toggleLineRect == null)
+        {
+            Restore();
+            return;
+        }
+
+        if (!_hasOriginal)
+        {
+            if (!TryCaptureOriginalPlacement())
+                return;
+        }
+
+        if (_rowContainer == null || _entryBranch == null || _toggleBranch == null || _entryRect == null)
+        {
+            Restore();
+            return;
+        }
+
+        ApplyLayout();
+        _applyFrames = 3;
+        RequestLayout();
+    }
+
+    internal void Restore()
+    {
+        if (!_hasOriginal)
+            return;
+
+        RestoreSiblingOrder();
+        if (_entryBranch != null && _entryOriginalParent != null && !ReferenceEquals(_entryBranch.parent, _entryOriginalParent))
+        {
+            _entryBranch.SetParent(_entryOriginalParent, false);
+            _entryBranch.SetSiblingIndex(Mathf.Clamp(_entryBranchOriginalSiblingIndex, 0, _entryOriginalParent.childCount - 1));
+        }
+
+        if (_horizontalLayout != null)
+            _horizontalLayout.enabled = _originalHorizontalEnabled;
+
+        if (_verticalLayout != null)
+        {
+            if (_hadVerticalLayout)
+            {
+                _verticalLayoutSnapshot?.Restore(_verticalLayout);
+                _verticalLayout.enabled = _originalVerticalEnabled;
+            }
+            else
+            {
+                Destroy(_verticalLayout);
+                _verticalLayout = null;
+            }
+        }
+
+        _entryLayoutSnapshot?.Restore();
+        _toggleBranchLayoutSnapshot?.Restore();
+        _entryBranchLayoutSnapshot?.Restore();
+        _rowContainerLayoutSnapshot?.Restore();
+
+        _hasOriginal = false;
+        _applyFrames = 0;
+        RequestLayout();
+    }
+
+    private void LateUpdate()
+    {
+        if (_applyFrames <= 0 || !Plugin.EnableFilterEntryFullRow)
+            return;
+
+        _applyFrames--;
+        ApplyLayout();
+        RequestLayout();
+    }
+
+    private bool TryCaptureOriginalPlacement()
+    {
+        if (_entryRect == null || _toggleLineRect == null)
+            return false;
+
+        var common = FilterEntryFullRowLayoutSupport.FindCommonAncestor(_entryRect, _toggleLineRect);
+        if (common == null || common.GetComponentInParent<SortAndFilter>(true) != GetComponent<SortAndFilter>())
+            return false;
+
+        var entryBranch = FilterEntryFullRowLayoutSupport.FindDirectChildUnder(common, _entryRect);
+        var toggleBranch = FilterEntryFullRowLayoutSupport.FindDirectChildUnder(common, _toggleLineRect);
+        if (entryBranch == null || toggleBranch == null || ReferenceEquals(entryBranch, toggleBranch))
+            return false;
+
+        var layoutParent = common.parent as RectTransform;
+        if (layoutParent == null)
+            return false;
+
+        _horizontalLayout = common.GetComponent<HorizontalLayoutGroup>();
+        if (_horizontalLayout == null)
+            return false;
+
+        _rowContainer = common;
+        _layoutParent = layoutParent;
+        _entryBranch = entryBranch;
+        _toggleBranch = toggleBranch;
+        _entryOriginalParent = _entryBranch.parent as RectTransform;
+        _entryBranchOriginalSiblingIndex = _entryBranch.GetSiblingIndex();
+        _toggleBranchOriginalSiblingIndex = _toggleBranch.GetSiblingIndex();
+        _originalHorizontalEnabled = _horizontalLayout.enabled;
+
+        _verticalLayout = _rowContainer.GetComponent<VerticalLayoutGroup>();
+        _hadVerticalLayout = _verticalLayout != null;
+        if (_verticalLayout != null)
+        {
+            _originalVerticalEnabled = _verticalLayout.enabled;
+            _verticalLayoutSnapshot = LayoutGroupSnapshot.Capture(_verticalLayout);
+        }
+
+        _rowContainerLayoutSnapshot = LayoutElementSnapshot.Capture(_rowContainer);
+        _entryBranchLayoutSnapshot = LayoutElementSnapshot.Capture(_entryBranch);
+        _toggleBranchLayoutSnapshot = LayoutElementSnapshot.Capture(_toggleBranch);
+        _entryLayoutSnapshot = LayoutElementSnapshot.Capture(_entryRect);
+
+        _hasOriginal = true;
+        return true;
+    }
+
+    private void ApplyLayout()
+    {
+        if (_rowContainer == null || _layoutParent == null || _entryBranch == null || _toggleBranch == null || _entryRect == null)
+            return;
+
+        if (_horizontalLayout != null)
+            _horizontalLayout.enabled = _originalHorizontalEnabled;
+
+        if (!ReferenceEquals(_rowContainer.parent, _layoutParent))
+            return;
+
+        if (!ReferenceEquals(_toggleBranch.parent, _rowContainer))
+            _toggleBranch.SetParent(_rowContainer, false);
+
+        if (!ReferenceEquals(_entryBranch.parent, _layoutParent))
+            _entryBranch.SetParent(_layoutParent, false);
+
+        _entryBranch.SetSiblingIndex(Mathf.Clamp(_rowContainer.GetSiblingIndex() + 1, 0, _layoutParent.childCount - 1));
+
+        var toggleHeight = ResolvePreferredHeight(_toggleBranch, FallbackToggleRowHeight);
+        var entryHeight = ResolvePreferredHeight(_entryRect, FallbackEntryRowHeight);
+
+        ConfigureLayoutElement(_rowContainer, -1f, -1f, 1f, toggleHeight, toggleHeight, 0f);
+        ConfigureLayoutElement(_toggleBranch, -1f, -1f, 1f, toggleHeight, toggleHeight, 0f);
+        ConfigureLayoutElement(_entryBranch, -1f, -1f, 1f, entryHeight, entryHeight, 0f);
+        ConfigureLayoutElement(_entryRect, -1f, -1f, 1f, entryHeight, entryHeight, 0f);
+
+        var entryHorizontal = _entryBranch.GetComponent<HorizontalLayoutGroup>();
+        if (entryHorizontal != null)
+        {
+            entryHorizontal.enabled = true;
+            entryHorizontal.childAlignment = TextAnchor.MiddleCenter;
+            entryHorizontal.childControlWidth = true;
+            entryHorizontal.childControlHeight = true;
+            entryHorizontal.childForceExpandWidth = true;
+            entryHorizontal.childForceExpandHeight = false;
+        }
+    }
+
+    private void ConfigureVerticalLayout(VerticalLayoutGroup layout)
+    {
+        if (layout == null)
+            return;
+
+        layout.enabled = true;
+        layout.padding = _horizontalLayout != null
+            ? new RectOffset(
+                _horizontalLayout.padding.left,
+                _horizontalLayout.padding.right,
+                _horizontalLayout.padding.top,
+                _horizontalLayout.padding.bottom)
+            : new RectOffset(0, 0, 0, 0);
+        layout.spacing = RowSpacing;
+        layout.childAlignment = TextAnchor.UpperLeft;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+    }
+
+    private static void ConfigureLayoutElement(
+        RectTransform rect,
+        float minWidth,
+        float preferredWidth,
+        float flexibleWidth,
+        float minHeight,
+        float preferredHeight,
+        float flexibleHeight)
+    {
+        if (rect == null)
+            return;
+
+        var layout = rect.GetComponent<LayoutElement>() ?? rect.gameObject.AddComponent<LayoutElement>();
+        layout.ignoreLayout = false;
+        layout.minWidth = minWidth;
+        layout.preferredWidth = preferredWidth;
+        layout.flexibleWidth = flexibleWidth;
+        layout.minHeight = minHeight;
+        layout.preferredHeight = preferredHeight;
+        layout.flexibleHeight = flexibleHeight;
+    }
+
+    private static float ResolvePreferredHeight(RectTransform rect, float fallback)
+    {
+        if (rect == null)
+            return fallback;
+
+        var layout = rect.GetComponent<LayoutElement>();
+        if (layout != null && layout.preferredHeight > 1f)
+            return Mathf.Clamp(layout.preferredHeight, 24f, 80f);
+
+        var preferred = LayoutUtility.GetPreferredHeight(rect);
+        if (preferred > 1f)
+            return Mathf.Clamp(preferred, 24f, 80f);
+
+        if (rect.rect.height > 1f)
+            return Mathf.Clamp(rect.rect.height, 24f, 80f);
+
+        return fallback;
+    }
+
+    private void RestoreSiblingOrder()
+    {
+        if (_rowContainer == null || _entryBranch == null || _toggleBranch == null)
+            return;
+
+        if (_entryOriginalParent != null)
+        {
+            if (!ReferenceEquals(_entryBranch.parent, _entryOriginalParent))
+                _entryBranch.SetParent(_entryOriginalParent, false);
+            _entryBranch.SetSiblingIndex(Mathf.Clamp(_entryBranchOriginalSiblingIndex, 0, _entryOriginalParent.childCount - 1));
+        }
+
+        if (ReferenceEquals(_toggleBranch.parent, _rowContainer))
+        {
+            _toggleBranch.SetSiblingIndex(Mathf.Clamp(_toggleBranchOriginalSiblingIndex, 0, _rowContainer.childCount - 1));
+        }
+    }
+
+    private void RequestLayout()
+    {
+        if (_entryRect != null)
+            UiLayoutRefreshQueue.Request(_entryRect);
+        if (_entryBranch != null)
+            UiLayoutRefreshQueue.Request(_entryBranch);
+        if (_toggleBranch != null)
+            UiLayoutRefreshQueue.Request(_toggleBranch);
+        if (_rowContainer != null)
+            UiLayoutRefreshQueue.Request(_rowContainer, parentDepth: 3, forceCanvas: true);
+        if (_layoutParent != null)
+            UiLayoutRefreshQueue.Request(_layoutParent, parentDepth: 2, forceCanvas: true);
+    }
+
+    private sealed class LayoutGroupSnapshot
+    {
+        private RectOffset _padding;
+        private float _spacing;
+        private TextAnchor _childAlignment;
+        private bool _childControlWidth;
+        private bool _childControlHeight;
+        private bool _childForceExpandWidth;
+        private bool _childForceExpandHeight;
+
+        internal static LayoutGroupSnapshot Capture(HorizontalOrVerticalLayoutGroup layout)
+        {
+            if (layout == null)
+                return null;
+
+            return new LayoutGroupSnapshot
+            {
+                _padding = new RectOffset(
+                    layout.padding.left,
+                    layout.padding.right,
+                    layout.padding.top,
+                    layout.padding.bottom),
+                _spacing = layout.spacing,
+                _childAlignment = layout.childAlignment,
+                _childControlWidth = layout.childControlWidth,
+                _childControlHeight = layout.childControlHeight,
+                _childForceExpandWidth = layout.childForceExpandWidth,
+                _childForceExpandHeight = layout.childForceExpandHeight,
+            };
+        }
+
+        internal void Restore(HorizontalOrVerticalLayoutGroup layout)
+        {
+            if (layout == null)
+                return;
+
+            layout.padding = new RectOffset(_padding.left, _padding.right, _padding.top, _padding.bottom);
+            layout.spacing = _spacing;
+            layout.childAlignment = _childAlignment;
+            layout.childControlWidth = _childControlWidth;
+            layout.childControlHeight = _childControlHeight;
+            layout.childForceExpandWidth = _childForceExpandWidth;
+            layout.childForceExpandHeight = _childForceExpandHeight;
+        }
+    }
+
+    private sealed class LayoutElementSnapshot
+    {
+        private RectTransform _rect;
+        private LayoutElement _element;
+        private bool _hadElement;
+        private bool _ignoreLayout;
+        private float _minWidth;
+        private float _preferredWidth;
+        private float _flexibleWidth;
+        private float _minHeight;
+        private float _preferredHeight;
+        private float _flexibleHeight;
+
+        internal static LayoutElementSnapshot Capture(RectTransform rect)
+        {
+            if (rect == null)
+                return null;
+
+            var element = rect.GetComponent<LayoutElement>();
+            var snapshot = new LayoutElementSnapshot
+            {
+                _rect = rect,
+                _element = element,
+                _hadElement = element != null,
+            };
+
+            if (element != null)
+            {
+                snapshot._ignoreLayout = element.ignoreLayout;
+                snapshot._minWidth = element.minWidth;
+                snapshot._preferredWidth = element.preferredWidth;
+                snapshot._flexibleWidth = element.flexibleWidth;
+                snapshot._minHeight = element.minHeight;
+                snapshot._preferredHeight = element.preferredHeight;
+                snapshot._flexibleHeight = element.flexibleHeight;
+            }
+
+            return snapshot;
+        }
+
+        internal void Restore()
+        {
+            if (_rect == null)
+                return;
+
+            _element ??= _rect.GetComponent<LayoutElement>();
+            if (_element == null)
+                return;
+
+            if (!_hadElement)
+            {
+                UnityEngine.Object.Destroy(_element);
+                _element = null;
+                return;
+            }
+
+            _element.ignoreLayout = _ignoreLayout;
+            _element.minWidth = _minWidth;
+            _element.preferredWidth = _preferredWidth;
+            _element.flexibleWidth = _flexibleWidth;
+            _element.minHeight = _minHeight;
+            _element.preferredHeight = _preferredHeight;
+            _element.flexibleHeight = _flexibleHeight;
+        }
     }
 }

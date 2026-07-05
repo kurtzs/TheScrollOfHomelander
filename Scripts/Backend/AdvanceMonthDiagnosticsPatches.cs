@@ -101,6 +101,208 @@ internal static class AdvanceMonthDiagnosticsInformationPatch
     }
 }
 
+[HarmonyPatch(typeof(InformationDomain), "MakeSettlementsInformation")]
+internal static class AdvanceMonthDiagnosticsMakeSettlementsInformationPatch
+{
+    private static void Prefix(out long __state)
+    {
+        __state = AdvanceMonthDiagnosticsRecorder.BeginInformationPhase();
+    }
+
+    private static Exception Finalizer(long __state, Exception __exception)
+    {
+        AdvanceMonthDiagnosticsRecorder.EndInformationPhase("MakeSettlementsInformation", __state, __exception);
+        return __exception;
+    }
+}
+
+[HarmonyPatch]
+internal static class AdvanceMonthDiagnosticsPlanDisseminateSecretInformationPatch
+{
+    private static MethodBase TargetMethod()
+    {
+        return AccessTools.Method(
+            typeof(InformationDomain),
+            "PlanDisseminateSecretInformation",
+            new[] { typeof(DataContext), typeof(int) });
+    }
+
+    private static void Prefix(out long __state)
+    {
+        __state = AdvanceMonthDiagnosticsRecorder.BeginInformationPhase();
+    }
+
+    private static Exception Finalizer(long __state, Exception __exception)
+    {
+        AdvanceMonthDiagnosticsRecorder.EndInformationPhase("PlanDisseminateSecretInformation", __state, __exception);
+        return __exception;
+    }
+}
+
+[HarmonyPatch]
+internal static class AdvanceMonthDiagnosticsMetabolismSecretInformationPatch
+{
+    private static MethodBase TargetMethod()
+    {
+        return AccessTools.Method(
+            typeof(InformationDomain),
+            "MetabolismSecretInformation",
+            new[] { typeof(DataContext) });
+    }
+
+    private static void Prefix(out long __state)
+    {
+        __state = AdvanceMonthDiagnosticsRecorder.BeginMetabolismSecretInformation();
+        AdvanceMonthMetabolismShadowCompare.Begin(__state != 0L);
+    }
+
+    private static Exception Finalizer(long __state, Exception __exception)
+    {
+        AdvanceMonthMetabolismShadowCompare.Finish();
+        AdvanceMonthDiagnosticsRecorder.EndMetabolismSecretInformation(__state, __exception);
+        return __exception;
+    }
+}
+
+[HarmonyPatch]
+internal static class AdvanceMonthDiagnosticsMakeSecretBroadcastPatch
+{
+    private static MethodBase TargetMethod()
+    {
+        List<MethodInfo> methods = AccessTools.GetDeclaredMethods(typeof(InformationDomain));
+        for (int i = 0; i < methods.Count; i++)
+        {
+            MethodInfo method = methods[i];
+            if (method.Name != "MakeSecretBroadcast" || method.GetParameters().Length != 6)
+            {
+                continue;
+            }
+
+            return method;
+        }
+
+        return null;
+    }
+
+    private static void Prefix(out long __state)
+    {
+        __state = AdvanceMonthDiagnosticsRecorder.BeginMetabolismDetail();
+    }
+
+    private static Exception Finalizer(long __state, Exception __exception)
+    {
+        AdvanceMonthDiagnosticsRecorder.EndMetabolismDetail("MakeSecretBroadcast", __state, __exception);
+        return __exception;
+    }
+}
+
+[HarmonyPatch(typeof(InformationDomain), "DiscardSecretInformation", new[] { typeof(DataContext), typeof(int), typeof(SecretInformationId) })]
+internal static class AdvanceMonthDiagnosticsDiscardSecretInformationPatch
+{
+    private static void Prefix(out long __state)
+    {
+        __state = AdvanceMonthDiagnosticsRecorder.BeginMetabolismDetail();
+    }
+
+    private static Exception Finalizer(long __state, Exception __exception)
+    {
+        AdvanceMonthDiagnosticsRecorder.EndMetabolismDetail("DiscardSecretInformation", __state, __exception);
+        return __exception;
+    }
+}
+
+[HarmonyPatch]
+internal static class AdvanceMonthDiagnosticsRecordSecretInformationRemovePatch
+{
+    private static MethodBase TargetMethod()
+    {
+        return AccessTools.Method(
+            typeof(InformationDomain),
+            "RecordSecretInformationRemove",
+            new[] { typeof(DataContext), typeof(IEnumerable<SecretInformationId>) });
+    }
+
+    private static void Prefix(IEnumerable<SecretInformationId> idsToRemove, out long __state)
+    {
+        AdvanceMonthMetabolismShadowCompare.CaptureActualSecretRemovals(idsToRemove);
+        __state = AdvanceMonthDiagnosticsRecorder.BeginMetabolismDetail();
+    }
+
+    private static Exception Finalizer(long __state, Exception __exception)
+    {
+        AdvanceMonthDiagnosticsRecorder.EndMetabolismDetail("RecordSecretInformationRemove", __state, __exception);
+        return __exception;
+    }
+}
+
+[HarmonyPatch]
+internal static class AdvanceMonthDiagnosticsRecordSecretOccurenceRemovePatch
+{
+    private static MethodBase TargetMethod()
+    {
+        return AccessTools.Method(
+            typeof(InformationDomain),
+            "RecordSecretOccurenceRemove",
+            new[] { typeof(DataContext), typeof(IEnumerable<SecretOccurenceId>) });
+    }
+
+    private static void Prefix(IEnumerable<SecretOccurenceId> idsToRemove, out long __state)
+    {
+        AdvanceMonthMetabolismShadowCompare.CaptureActualOccurenceRemovals(idsToRemove);
+        __state = AdvanceMonthDiagnosticsRecorder.BeginMetabolismDetail();
+    }
+
+    private static Exception Finalizer(long __state, Exception __exception)
+    {
+        AdvanceMonthDiagnosticsRecorder.EndMetabolismDetail("RecordSecretOccurenceRemove", __state, __exception);
+        return __exception;
+    }
+}
+
+[HarmonyPatch]
+internal static class AdvanceMonthDiagnosticsCalcSecretOccurenceHolderCountPatch
+{
+    private static MethodBase TargetMethod()
+    {
+        return AccessTools.Method(
+            typeof(InformationDomain),
+            "CalcSecretOccurenceHolderCount");
+    }
+
+    private static void Prefix(out long __state)
+    {
+        __state = AdvanceMonthDiagnosticsRecorder.BeginInformationLookup();
+    }
+
+    private static Exception Finalizer(long __state, Exception __exception)
+    {
+        AdvanceMonthDiagnosticsRecorder.EndInformationLookup("CalcSecretOccurenceHolderCount", __state, __exception);
+        return __exception;
+    }
+}
+
+[HarmonyPatch]
+internal static class AdvanceMonthDiagnosticsCalcSecretInformationKnownCharacterCountPatch
+{
+    private static MethodBase TargetMethod()
+    {
+        return AccessTools.Method(
+            typeof(InformationDomain),
+            "CalcSecretInformationKnownCharacterCount");
+    }
+
+    private static void Prefix(out long __state)
+    {
+        __state = AdvanceMonthDiagnosticsRecorder.BeginInformationLookup();
+    }
+
+    private static Exception Finalizer(long __state, Exception __exception)
+    {
+        AdvanceMonthDiagnosticsRecorder.EndInformationLookup("CalcSecretInformationKnownCharacterCount", __state, __exception);
+        return __exception;
+    }
+}
+
 [HarmonyPatch(typeof(ArchiveFileBase), "Save")]
 internal static class AdvanceMonthDiagnosticsArchiveSavePatch
 {

@@ -1,10 +1,10 @@
 return {
 	Title = "太祖绘卷(UI,商人,制造,筛选,操作,仓库优化)",
 	Author = "TenMountainMoon&ElysianSunaker",
-	Version = "1.0.10.0",
-	GameVersion = "1.0.10.0",
+	Version = "1.0.44.5",
+	GameVersion = "1.0.44.0",
 	Source = 0,
-	Description = "太吾绘卷正式版的UI太烂了!太难用了!所以我要化身祖国人,让这个绘卷变成我需要的样子!\n该MOD由“十山月”制作\n\n整合了多个优化的内容,包括UI紧凑,批量制造,批量购买,高级物品筛选\n\n●UI紧凑:在MOD设置里可以调整各个窗口界面的物品UI缩放,让你的电脑屏幕不再只显示十个物品——你想要什么样,就是什么样\n·压缩物品排序按钮:原本的排序按钮占了两行,还贼大!很明显这是给洋人设计的东西,但是这是我们自己的游戏,我们凭什么要为了别人的舒适度丢失自己的适用性!开启这个按钮,把排序压缩到一行!\n·容器紧凑化:允许你修改背包,库房交换,功法选择界面的缩放比例,偌大的电脑屏幕只显示十个物品真的很蠢!我们是电脑玩家,不是搓玻璃的!\n·默认卡片视图:官方的“详细”信息详细了个寂寞!和简略相比不仅没有多出有效信息,反而还把图标给压缩了,为什么默认的还是这个界面呢?所以开启这个选项,让“简略”视图作为默认的选项!\n\n●批量制造:在制造食物和药毒时,可以在界面右上角调整设置,然后打开制作按钮上方的批量制造,就可以快速做出你想要的食材了!\n·制作优化:徒手做饭是何意味,自动选择工具选择了个秋风萧瑟,开启它,自动选择最高级的工具!\n·自动最大数量:做饭做菜默认只生产一个,但是我们都知道人是铁饭是钢,一顿不吃饿得慌,只做一份怎么够吃?让生产永远保持在最大数量!\n·食窖/药房/幽室开启:如果你不喜欢,你可以关闭一些你不想应用这些设置的建筑\n·做菜/药/毒自动连续制作:如果你有大量的交易需求,你可以打开它,让每一次制作都会用完你新买的引子!\n·可配置是否包括行囊/私库/公库\n·可配置最低/最高的品级限制\n·可配置优先使用的工具品级\n·可配置是否允许徒手制作\n·可配置是否开启耐久保护(如果工具在下一次使用中会损毁,则停止批量制作)\n\n●批量购买:在商人的“购回”界面上下，可以找到批量购买和配置界面,根据你的需求批量购买食物和药毒的引子,让商人成为一个合格的批发商\n·可配置批量采购的最低/最高品级\n·可配置是否采购涨价/原价的物品\n·可配置是否采购未解锁商店的物品(例如三级商店未解锁时,关闭这个功能,避免在三级商店购买而消耗购买限额)\n\n●高级物品筛选:基于高级物品筛选逻辑的功能,让你再也不需要多点一下然后找半天\n·前置筛选:没人觉得那个筛选按钮又大又没意义吗？所以我把它删了!现在你可以直接看到一级的筛选项目！双击可以打开更高级的筛选界面!\n\n●记忆优化:之前的太吾明明是有记忆功能的,但是正式版给删了,这不好,所以我给做回来了\n·排序记忆:记住上一次的排序优先级(例如品级优先),下次打开的时候还是这个排序!\n·策略预设记忆:记住上一次我用的是什么策略,我不想多点一下\n·切磋模式记忆:我就想自动打所有的较艺,因为它真的很无聊\n\n●暂未加入,将来(大概率)会加入的功能:\n·快速转移-[shift+鼠标左键]即可快速转移/出售物品,让你不需要再多点一下!\n·在产业地块上于商人交易时，允许直接从货仓出售物品\n·[Shift+鼠标左键]同时筛选多个项目",
+	Description = "改进的内容包括:UI紧凑化,批量制造,商店批量购买,高级物品筛选,更合理的快捷键,还有一点点战斗界面优化和其他的小优化,例如地图地块的人物图标上移之类的......而且所有的选项都是可以调整的,如果你并不需要其中的某些功能,或者出现了BUG,那就在设置里关掉它,其他功能依然可以正常使用!\r\n\r\n在筛选栏重复点击“全部”即可打开详细筛选窗口!!!\r\n在功法/读书/物品/突破等界面,点击“全部”可以打开次级筛选窗口!!!\r\n你如果在某个界面觉得筛选不够详细,点击“全部”可以打开次级筛选窗口!!!\r\n\r\n————\r\n《太吾绘卷》,我们喜爱的游戏：自由,和谐,美丽,奇幻——我们的游玩方式.但自由,并非没有代价!(灾难性的UI界面)\r\n哈哈,觉得眼熟?这样的事情正在每一次更新中发生!所以,为什么不做出你游玩中最重要的决定——打上优化太祖传人优化MOD!\r\nUI紧凑化,让你的界面不再只显示五个物品!批量购买与制作,避免你在反复制造的过程中导致现实中真元溃散!高级物品筛选,避免因为难用的筛选界面而内息紊乱!更多的优化内容在MOD里等着你!\r\n代表太祖行侠仗义,成为太吾,成为相枢,成为——玩家传奇!\r\n————\r\n我们致力于提升玩家在新版UI的操作过程中的适应性和易用性，如果你有什么好的建议或者BUG反馈，欢迎留言。\r\n\r\n!!!!!!!!!注意!!!!!!!!!\r\n如果你需要反馈BUG,请保存红字报错,记住开了哪些MOD,并且确认是哪些操作导致的红字以便复现.这样我们才能找到报错的原因并进行修复!\r\n\r\n——————————功能介绍——————————\r\n●宏观优化:在整体的界面的优化,使其更加直观,显眼\r\n·将地图地块人物图标上移,使其不再位于地图夹缝\r\n·修改九品到一品物品的颜色,使其更加鲜艳,辨识度更高\r\n·战斗界面将光标放置在功法/武器上时,直接显示详细信息(而不需要按shift)\r\n\r\n●UI优化:在MOD设置里可以调整各个窗口界面的物品UI缩放,让你的电脑屏幕不再只显示十个物品——你想要什么样,就是什么样\r\n·压缩物品排序按钮:原本的排序按钮占了两行,还贼大!很明显这是给洋人设计的东西,但是这是我们自己的游戏,我们凭什么要为了别人的舒适度丢失自己的适用性!开启这个按钮,把排序压缩到一行!\r\n·容器紧凑化:允许你修改背包,库房交换,功法选择界面的缩放比例,偌大的电脑屏幕只显示十个物品真的很蠢!我们是电脑玩家,不是搓玻璃的!\r\n·默认卡片视图:官方的“详细”信息详细了个寂寞!和简略相比不仅没有多出有效信息,反而还把图标给压缩了,为什么默认的还是这个界面呢?所以开启这个选项,让“简略”视图作为默认的选项!\r\n\r\n●批量制造:在制造食物和药毒时,可以在界面右上角调整设置,然后打开制作按钮上方的批量制造,就可以快速做出你想要的食材了!\r\n·制作优化:徒手做饭是何意味,自动选择工具选择了个秋风萧瑟,开启它,自动选择最高级的工具!\r\n·自动最大数量:做饭做菜默认只生产一个,但是我们都知道人是铁饭是钢,一顿不吃饿得慌,只做一份怎么够吃?让生产永远保持在最大数量!\r\n·食窖/药房/幽室开启:如果你不喜欢,你可以关闭一些你不想应用这些设置的建筑\r\n·做菜/药/毒自动连续制作:如果你有大量的交易需求,你可以打开它,让每一次制作都会用完你新买的引子!\r\n·可配置是否包括行囊/私库/公库\r\n·可配置最低/最高的品级限制\r\n·可配置优先使用的工具品级\r\n·可配置是否允许徒手制作\r\n·可配置是否开启耐久保护(如果工具在下一次使用中会损毁,则停止批量制作)\r\n\r\n●批量购买:在商人的“购回”界面上下，可以找到批量购买和配置界面,根据你的需求批量购买食物和药毒的引子,让商人成为一个合格的批发商\r\n·可配置批量采购的最低/最高品级\r\n·可配置是否采购涨价/原价的物品\r\n·可配置是否采购未解锁商店的物品(例如三级商店未解锁时,关闭这个功能,避免在三级商店购买而消耗购买限额)\r\n\r\n●高级物品筛选:基于高级物品筛选逻辑的功能,让你再也不需要多点一下然后找半天\r\n·文字搜索功能:你可以直接通过搜索名字来找到你想要找的物品~\r\n·前置筛选:没人觉得那个筛选按钮又大又没意义吗？所以我把它删了!现在你可以直接看到一级的筛选项目！再次可以打开更高级的筛选界面!\r\n·[Shift+鼠标左键]同时筛选多个项目(设置可以反转该功能)\r\n·!!!再次点击已经选中的筛选项(例如点击“全部”即可打开详细筛选界面)!!!\r\n\r\n●记忆优化:之前的太吾明明是有记忆功能的,但是正式版给删了,这不好,所以我给做回来了\r\n·排序记忆:记住上一次的排序优先级(例如品级优先),下次打开的时候还是这个排序!\r\n·策略预设记忆:记住上一次我用的是什么策略,我不想多点一下\r\n·切磋模式记忆:我就想自动打所有的较艺,因为它真的很无聊\r\n\r\n●操作优化:\r\n·快速转移-[shift+鼠标左键]即可快速转移/出售物品,让你不需要再多点一下!\r\n·[Ctrl+鼠标左键]可以转移一半的物品\r\n·在产业地块上于商人交易时，允许直接从货仓出售物品\r\n·仓库增加同步按钮,开启后,在更改其中一个页面的选项时,另一页面会同步修改\r\n·商人/产业可以通过空格键确认购买/建造\r\n——————————更新预告——————————\r\n※(可能)将加入的功能/(一定)会修复的BUG\r\n\r\n——————————更新日志——————————\r\n更新日志已移至改动界面,请前往查看",
 	FrontendPlugins = {
 		[1] = "Front/BetterTaiwuScrollFrontend.dll",
 	},
@@ -24,11 +24,19 @@ return {
 			SettingType = "Toggle",
 			Key = "inline_filter_buttons",
 			DisplayName = "前置一级筛选按钮",
-			Description = "隐藏筛选入口框，将筛选面板的第一级选项前置到物品列表上方；选择具体分类时再打开后续筛选项。",
+			Description = "将筛选面板的第一级选项前置到物品列表上方；重复点击已选项可打开后续筛选界面。",
 			GroupName = "筛选UI优化",
 			DefaultValue = true,
 		},
 		[3] = {
+			SettingType = "Toggle",
+			Key = "filter_entry_full_row",
+			DisplayName = "筛选框独立成行",
+			Description = "当筛选入口框和物品类目图标位于同一个横向父节点时，将筛选入口框移动到图标下方并占满一行。",
+			GroupName = "筛选UI优化",
+			DefaultValue = true,
+		},
+		[4] = {
 			SettingType = "Toggle",
 			Key = "best_tool",
 			DisplayName = "自动最优工具",
@@ -36,7 +44,7 @@ return {
 			GroupName = "制作优化",
 			DefaultValue = true,
 		},
-		[4] = {
+		[5] = {
 			SettingType = "Toggle",
 			Key = "max_product_count",
 			DisplayName = "自动最大数量",
@@ -44,7 +52,7 @@ return {
 			GroupName = "制作优化",
 			DefaultValue = true,
 		},
-		[5] = {
+		[6] = {
 			SettingType = "Toggle",
 			Key = "food_enabled",
 			DisplayName = "食窖",
@@ -52,7 +60,7 @@ return {
 			GroupName = "制作优化",
 			DefaultValue = true,
 		},
-		[6] = {
+		[7] = {
 			SettingType = "Toggle",
 			Key = "medicine_enabled",
 			DisplayName = "药房",
@@ -60,7 +68,7 @@ return {
 			GroupName = "制作优化",
 			DefaultValue = true,
 		},
-		[7] = {
+		[8] = {
 			SettingType = "Toggle",
 			Key = "poison_enabled",
 			DisplayName = "幽室",
@@ -68,7 +76,7 @@ return {
 			GroupName = "制作优化",
 			DefaultValue = true,
 		},
-		[8] = {
+		[9] = {
 			SettingType = "Toggle",
 			Key = "auto_select_food_material",
 			DisplayName = "做菜连续自动选材",
@@ -76,7 +84,7 @@ return {
 			GroupName = "制作优化",
 			DefaultValue = true,
 		},
-		[9] = {
+		[10] = {
 			SettingType = "Toggle",
 			Key = "auto_select_medicine_material",
 			DisplayName = "制药连续自动选材",
@@ -84,7 +92,7 @@ return {
 			GroupName = "制作优化",
 			DefaultValue = true,
 		},
-		[10] = {
+		[11] = {
 			SettingType = "Toggle",
 			Key = "auto_select_poison_material",
 			DisplayName = "炼毒连续自动选材",
@@ -92,7 +100,7 @@ return {
 			GroupName = "制作优化",
 			DefaultValue = true,
 		},
-		[11] = {
+		[12] = {
 			SettingType = "Toggle",
 			Key = "continuous_make_ui",
 			DisplayName = "连续制作界面",
@@ -100,7 +108,7 @@ return {
 			GroupName = "制作优化",
 			DefaultValue = true,
 		},
-		[12] = {
+		[13] = {
 			SettingType = "Toggle",
 			Key = "container_compact",
 			DisplayName = "容器紧凑化",
@@ -108,40 +116,51 @@ return {
 			GroupName = "容器UI优化",
 			DefaultValue = true,
 		},
-		[13] = {
-			SettingType = "Slider",
-			Key = "container_inventory_scale",
-			DisplayName = "背包容器缩放(%)",
-			Description = "角色行囊卡片列表的缩放比例。",
-			GroupName = "容器UI优化",
-			MinValue = 30,
-			MaxValue = 100,
-			StepSize = 1,
-			DefaultValue = 70,
-		},
 		[14] = {
 			SettingType = "Slider",
-			Key = "container_exchange_scale",
-			DisplayName = "交换容器缩放(%)",
-			Description = "仓库、交易、商店、送礼等交换类界面卡片列表的缩放比例。",
+			Key = "container_inventory_line_count",
+			DisplayName = "背包每行格数",
+			Description = "角色行囊卡片列表每行显示的格数，缩放大小会自动计算。",
 			GroupName = "容器UI优化",
-			MinValue = 30,
-			MaxValue = 100,
+			MinValue = 7,
+			MaxValue = 12,
 			StepSize = 1,
-			DefaultValue = 70,
+			DefaultValue = 10,
 		},
 		[15] = {
 			SettingType = "Slider",
-			Key = "container_skill_scale",
-			DisplayName = "功法选择缩放(%)",
-			Description = "功法选择界面卡片列表的缩放比例。",
+			Key = "container_exchange_line_count",
+			DisplayName = "交换每行格数",
+			Description = "仓库、交易、商店、送礼等交换类界面卡片列表每行显示的格数，缩放大小会自动计算。",
 			GroupName = "容器UI优化",
-			MinValue = 30,
-			MaxValue = 100,
+			MinValue = 5,
+			MaxValue = 10,
 			StepSize = 1,
-			DefaultValue = 70,
+			DefaultValue = 7,
 		},
 		[16] = {
+			SettingType = "Slider",
+			Key = "container_skill_line_count",
+			DisplayName = "功法选择每行格数",
+			Description = "功法选择界面卡片列表每行显示的格数，缩放大小会自动计算。",
+			GroupName = "容器UI优化",
+			MinValue = 3,
+			MaxValue = 7,
+			StepSize = 1,
+			DefaultValue = 4,
+		},
+		[17] = {
+			SettingType = "Slider",
+			Key = "container_equip_combat_skill_line_count",
+			DisplayName = "运功功法每行格数",
+			Description = "运功界面左侧功法列表每行显示的格数，缩放大小会自动计算。",
+			GroupName = "容器UI优化",
+			MinValue = 3,
+			MaxValue = 7,
+			StepSize = 1,
+			DefaultValue = 3,
+		},
+		[18] = {
 			SettingType = "Toggle",
 			Key = "container_default_card_mode",
 			DisplayName = "默认卡片视图",
@@ -149,7 +168,7 @@ return {
 			GroupName = "容器UI优化",
 			DefaultValue = true,
 		},
-		[17] = {
+		[19] = {
 			SettingType = "Toggle",
 			Key = "memory_filter_enabled",
 			DisplayName = "记忆筛选",
@@ -157,7 +176,7 @@ return {
 			GroupName = "记忆优化",
 			DefaultValue = true,
 		},
-		[18] = {
+		[20] = {
 			SettingType = "Toggle",
 			Key = "memory_sort_enabled",
 			DisplayName = "记忆排序",
@@ -165,7 +184,7 @@ return {
 			GroupName = "记忆优化",
 			DefaultValue = true,
 		},
-		[19] = {
+		[21] = {
 			SettingType = "Toggle",
 			Key = "memory_strategy_preset_enabled",
 			DisplayName = "记忆策略预设",
@@ -173,7 +192,7 @@ return {
 			GroupName = "记忆优化",
 			DefaultValue = true,
 		},
-		[20] = {
+		[22] = {
 			SettingType = "Toggle",
 			Key = "memory_lifeskill_auto_mode_enabled",
 			DisplayName = "记忆切磋模式",
@@ -181,7 +200,7 @@ return {
 			GroupName = "记忆优化",
 			DefaultValue = true,
 		},
-		[21] = {
+		[23] = {
 			SettingType = "Toggle",
 			Key = "bulk_purchase_ui",
 			DisplayName = "批量采购",
@@ -189,7 +208,7 @@ return {
 			GroupName = "购买优化",
 			DefaultValue = true,
 		},
-		[22] = {
+		[24] = {
 			SettingType = "Toggle",
 			Key = "shop_show_stock_page",
 			DisplayName = "显示货仓",
@@ -197,7 +216,7 @@ return {
 			GroupName = "购买优化",
 			DefaultValue = true,
 		},
-		[23] = {
+		[25] = {
 			SettingType = "Toggle",
 			Key = "fast_transfer",
 			DisplayName = "快速转移",
@@ -205,7 +224,7 @@ return {
 			GroupName = "操作优化",
 			DefaultValue = true,
 		},
-		[24] = {
+		[26] = {
 			SettingType = "Toggle",
 			Key = "invert_fast_transfer",
 			DisplayName = "反转快速转移",
@@ -213,7 +232,7 @@ return {
 			GroupName = "操作优化",
 			DefaultValue = false,
 		},
-		[25] = {
+		[27] = {
 			SettingType = "Toggle",
 			Key = "space_submit_exchange",
 			DisplayName = "空格完成交易",
@@ -221,7 +240,7 @@ return {
 			GroupName = "操作优化",
 			DefaultValue = true,
 		},
-		[26] = {
+		[28] = {
 			SettingType = "Toggle",
 			Key = "simplify_filter_icons",
 			DisplayName = "图标简化",
@@ -229,7 +248,7 @@ return {
 			GroupName = "筛选UI优化",
 			DefaultValue = false,
 		},
-		[27] = {
+		[29] = {
 			SettingType = "Toggle",
 			Key = "simplified_filter_icon_underlines",
 			DisplayName = "图标筛选下级提示",
@@ -237,7 +256,7 @@ return {
 			GroupName = "筛选UI优化",
 			DefaultValue = false,
 		},
-		[28] = {
+		[30] = {
 			SettingType = "Toggle",
 			Key = "map_tile_icon_y_offset",
 			DisplayName = "地图地块小图标上移",
@@ -245,7 +264,7 @@ return {
 			GroupName = "地图UI优化",
 			DefaultValue = true,
 		},
-		[29] = {
+		[31] = {
 			SettingType = "Slider",
 			Key = "map_tile_icon_y_offset_percent",
 			DisplayName = "地图图标上移比例",
@@ -256,7 +275,7 @@ return {
 			StepSize = 1,
 			DefaultValue = 35,
 		},
-		[30] = {
+		[32] = {
 			SettingType = "Toggle",
 			Key = "map_tile_merchant_icon_bright_color",
 			DisplayName = "地图商人图标亮色",
@@ -264,7 +283,7 @@ return {
 			GroupName = "地图UI优化",
 			DefaultValue = true,
 		},
-		[31] = {
+		[33] = {
 			SettingType = "Slider",
 			Key = "map_tile_merchant_icon_brightness_percent",
 			DisplayName = "地图商人图标亮度(%)",
@@ -275,7 +294,7 @@ return {
 			StepSize = 5,
 			DefaultValue = 150,
 		},
-		[32] = {
+		[34] = {
 			SettingType = "Slider",
 			Key = "map_large_icon_scale_percent",
 			DisplayName = "地图大图标缩放比例",
@@ -286,7 +305,7 @@ return {
 			StepSize = 5,
 			DefaultValue = 70,
 		},
-		[33] = {
+		[35] = {
 			SettingType = "Toggle",
 			Key = "custom_grade_colors",
 			DisplayName = "品级颜色优化",
@@ -294,7 +313,7 @@ return {
 			GroupName = "物品UI优化",
 			DefaultValue = true,
 		},
-		[34] = {
+		[36] = {
 			SettingType = "Toggle",
 			Key = "exchange_filter_category_sync",
 			DisplayName = "左右同步",
@@ -302,7 +321,7 @@ return {
 			GroupName = "交换UI优化",
 			DefaultValue = true,
 		},
-		[35] = {
+		[37] = {
 			SettingType = "Toggle",
 			Key = "shop_self_item_text_color",
 			DisplayName = "商人左侧商品文字",
@@ -310,7 +329,7 @@ return {
 			GroupName = "字体优化",
 			DefaultValue = true,
 		},
-		[36] = {
+		[38] = {
 			SettingType = "Toggle",
 			Key = "shop_gift_self_item_text_color",
 			DisplayName = "赠礼左侧物品文字",
@@ -318,7 +337,7 @@ return {
 			GroupName = "字体优化",
 			DefaultValue = true,
 		},
-		[37] = {
+		[39] = {
 			SettingType = "Toggle",
 			Key = "settlement_shop_self_item_text_color",
 			DisplayName = "库房左侧物品文字",
@@ -326,7 +345,7 @@ return {
 			GroupName = "字体优化",
 			DefaultValue = true,
 		},
-		[38] = {
+		[40] = {
 			SettingType = "Toggle",
 			Key = "warehouse_self_item_text_color",
 			DisplayName = "仓库左侧物品文字",
@@ -334,7 +353,7 @@ return {
 			GroupName = "字体优化",
 			DefaultValue = true,
 		},
-		[39] = {
+		[41] = {
 			SettingType = "Toggle",
 			Key = "exchange_book_self_item_text_color",
 			DisplayName = "书籍交换左侧文字",
@@ -342,7 +361,7 @@ return {
 			GroupName = "字体优化",
 			DefaultValue = true,
 		},
-		[40] = {
+		[42] = {
 			SettingType = "Toggle",
 			Key = "exchange_self_item_text_color",
 			DisplayName = "交换左侧物品文字",
@@ -350,15 +369,15 @@ return {
 			GroupName = "字体优化",
 			DefaultValue = true,
 		},
-		[41] = {
+		[43] = {
 			SettingType = "Toggle",
 			Key = "combat_tooltip_detail_without_shift",
 			DisplayName = "战斗悬浮详情",
 			Description = "战斗界面将鼠标放在功法或武器上时直接显示详细信息，不需要按住Shift。",
 			GroupName = "战斗UI优化",
-			DefaultValue = true,
+			DefaultValue = false,
 		},
-		[42] = {
+		[44] = {
 			SettingType = "Toggle",
 			Key = "map_list_merchant_icon_bright_color",
 			DisplayName = "列表商人图标亮色",
@@ -366,7 +385,7 @@ return {
 			GroupName = "地图UI优化",
 			DefaultValue = true,
 		},
-		[43] = {
+		[45] = {
 			SettingType = "Slider",
 			Key = "map_list_merchant_icon_brightness_percent",
 			DisplayName = "列表商人图标亮度(%)",
@@ -377,7 +396,7 @@ return {
 			StepSize = 5,
 			DefaultValue = 150,
 		},
-		[44] = {
+		[46] = {
 			SettingType = "Slider",
 			Key = "map_list_merchant_icon_scale_percent",
 			DisplayName = "列表商人图标大小(%)",
@@ -388,7 +407,7 @@ return {
 			StepSize = 5,
 			DefaultValue = 140,
 		},
-		[45] = {
+		[47] = {
 			SettingType = "Toggle",
 			Key = "inventory_search_box_optimization",
 			DisplayName = "搜索框优化",
@@ -396,7 +415,7 @@ return {
 			GroupName = "物品UI优化",
 			DefaultValue = true,
 		},
-		[46] = {
+		[48] = {
 			SettingType = "Toggle",
 			Key = "forging_enabled",
 			DisplayName = "锻造",
@@ -404,7 +423,7 @@ return {
 			GroupName = "制作优化",
 			DefaultValue = true,
 		},
-		[47] = {
+		[49] = {
 			SettingType = "Toggle",
 			Key = "woodworking_enabled",
 			DisplayName = "制木",
@@ -412,7 +431,7 @@ return {
 			GroupName = "制作优化",
 			DefaultValue = true,
 		},
-		[48] = {
+		[50] = {
 			SettingType = "Toggle",
 			Key = "weaving_enabled",
 			DisplayName = "织锦",
@@ -420,7 +439,7 @@ return {
 			GroupName = "制作优化",
 			DefaultValue = true,
 		},
-		[49] = {
+		[51] = {
 			SettingType = "Toggle",
 			Key = "jade_enabled",
 			DisplayName = "巧匠",
@@ -428,7 +447,7 @@ return {
 			GroupName = "制作优化",
 			DefaultValue = true,
 		},
-		[50] = {
+		[52] = {
 			SettingType = "Toggle",
 			Key = "auto_select_forging_material",
 			DisplayName = "锻造连续自动选材",
@@ -436,7 +455,7 @@ return {
 			GroupName = "制作优化",
 			DefaultValue = true,
 		},
-		[51] = {
+		[53] = {
 			SettingType = "Toggle",
 			Key = "auto_select_woodworking_material",
 			DisplayName = "制木连续自动选材",
@@ -444,7 +463,7 @@ return {
 			GroupName = "制作优化",
 			DefaultValue = true,
 		},
-		[52] = {
+		[54] = {
 			SettingType = "Toggle",
 			Key = "auto_select_weaving_material",
 			DisplayName = "织锦连续自动选材",
@@ -452,7 +471,7 @@ return {
 			GroupName = "制作优化",
 			DefaultValue = true,
 		},
-		[53] = {
+		[55] = {
 			SettingType = "Toggle",
 			Key = "auto_select_jade_material",
 			DisplayName = "巧匠连续自动选材",
@@ -460,7 +479,7 @@ return {
 			GroupName = "制作优化",
 			DefaultValue = true,
 		},
-		[54] = {
+		[56] = {
 			SettingType = "Toggle",
 			Key = "space_submit_exchange_need_confirm",
 			DisplayName = "空格交易需要同意",
@@ -468,7 +487,15 @@ return {
 			GroupName = "操作优化",
 			DefaultValue = true,
 		},
-		[55] = {
+		[57] = {
+			SettingType = "Toggle",
+			Key = "enable_advance_month_optimization",
+			DisplayName = "启用过月优化",
+			Description = "过月优化总开关。关闭后本组所有过月诊断、存档、密闻和行动规划优化都不会生效。",
+			GroupName = "过月优化",
+			DefaultValue = true,
+		},
+		[58] = {
 			SettingType = "Toggle",
 			Key = "enable_advance_month_diagnostics",
 			DisplayName = "过月诊断日志",
@@ -476,7 +503,7 @@ return {
 			GroupName = "过月优化",
 			DefaultValue = false,
 		},
-		[56] = {
+		[59] = {
 			SettingType = "Slider",
 			Key = "advance_month_diagnostics_detail",
 			DisplayName = "过月诊断详细度",
@@ -487,7 +514,7 @@ return {
 			StepSize = 1,
 			DefaultValue = 1,
 		},
-		[57] = {
+		[60] = {
 			SettingType = "Toggle",
 			Key = "memory_make_subtype_enabled",
 			DisplayName = "记忆正奇选择",
@@ -495,7 +522,7 @@ return {
 			GroupName = "记忆优化",
 			DefaultValue = true,
 		},
-		[58] = {
+		[61] = {
 			SettingType = "Toggle",
 			Key = "space_start_building",
 			DisplayName = "空格开始建造",
@@ -503,13 +530,104 @@ return {
 			GroupName = "操作优化",
 			DefaultValue = true,
 		},
-		[59] = {
+		[62] = {
 			SettingType = "Toggle",
 			Key = "memory_make_perfect_enabled",
 			DisplayName = "记忆精益求精",
 			Description = "制作装备时记忆精益求精的勾选、选中的种类，以及不同种类对应的木材、金铁、玉石、织物配比。",
 			GroupName = "记忆优化",
 			DefaultValue = true,
+		},
+		[63] = {
+			SettingType = "Toggle",
+			Key = "enable_advance_month_copy_buffer_optimization",
+			DisplayName = "存档复制块优化",
+			Description = "开启后将过月存档复制 working.db 时的 4KB 小块复制改为更大的复制块，不改变存档内容。",
+			GroupName = "过月优化",
+			DefaultValue = true,
+		},
+		[64] = {
+			SettingType = "Slider",
+			Key = "advance_month_copy_buffer_mb",
+			DisplayName = "存档复制块大小",
+			Description = "设置过月存档复制 working.db 时使用的复制块大小，会归一为 1/4/8/16MB，建议保持默认 4MB。",
+			GroupName = "过月优化",
+			MinValue = 1,
+			MaxValue = 16,
+			StepSize = 1,
+			DefaultValue = 4,
+		},
+		[65] = {
+			SettingType = "Toggle",
+			Key = "enable_advance_month_holder_count_cache",
+			DisplayName = "密闻持有人计数缓存",
+			Description = "开启后在密闻过月传播阶段缓存持有人计数查询结果，只替换重复计数查询，不跳过传播、随机或结算逻辑。",
+			GroupName = "过月优化",
+			DefaultValue = true,
+		},
+		[66] = {
+			SettingType = "Toggle",
+			Key = "enable_advance_month_no_compression",
+			DisplayName = "存档不压缩",
+			Description = "开启后过月保存本地存档时使用不压缩模式，可能减少保存耗时，但会显著增大存档体积。默认关闭。",
+			GroupName = "过月优化",
+			DefaultValue = false,
+		},
+		[67] = {
+			SettingType = "Toggle",
+			Key = "enable_advance_month_metabolism_shadow_compare",
+			DisplayName = "密闻代谢影子校验",
+			Description = "开启后在详细过月诊断中用只读缓存索引预测密闻代谢删除结果，并与原版实际结果对比。只写日志，不改变过月逻辑。",
+			GroupName = "过月优化",
+			DefaultValue = true,
+		},
+		[68] = {
+			SettingType = "Toggle",
+			Key = "enable_advance_month_metabolism_holder_index",
+			DisplayName = "密闻代谢持有人索引",
+			Description = "开启后在密闻代谢阶段用持有人索引替换每个密闻的全量扫描查询，不跳过广播、删除、记录或随机逻辑。",
+			GroupName = "过月优化",
+			DefaultValue = true,
+		},
+		[69] = {
+			SettingType = "Toggle",
+			Key = "enable_advance_month_secret_remove_batch",
+			DisplayName = "密闻批量删除优化",
+			Description = "开启后在密闻代谢阶段批量删除密闻数据，并合并重复缓存失效；删除集合不变，不跳过原版代谢判断。",
+			GroupName = "过月优化",
+			DefaultValue = true,
+		},
+		[70] = {
+			SettingType = "Toggle",
+			Key = "enable_advance_month_action_target_range_cache",
+			DisplayName = "行动目标范围缓存",
+			Description = "开启后在同一次角色行动规划中复用目标候选范围列表，只缓存候选列表，不缓存过滤、关系判断或随机选择结果。",
+			GroupName = "过月优化",
+			DefaultValue = true,
+		},
+		[71] = {
+			SettingType = "Toggle",
+			Key = "enable_advance_month_action_relation_cache",
+			DisplayName = "行动目标关系缓存",
+			Description = "开启后仅在角色行动目标过滤期间缓存关系查询结果，缓存随每次角色规划清空，不跨角色或跨阶段复用。",
+			GroupName = "过月优化",
+			DefaultValue = true,
+		},
+		[72] = {
+			SettingType = "Toggle",
+			Key = "enable_advance_month_action_age_group_cache",
+			DisplayName = "行动目标年龄缓存",
+			Description = "开启后仅在角色行动目标过滤期间缓存候选角色年龄段查询结果，缓存随每次角色规划清空。",
+			GroupName = "过月优化",
+			DefaultValue = true,
+		},
+		[73] = {
+			SettingType = "Toggle",
+			Key = "enable_advance_month_action_planning_detail_diagnostics",
+			DisplayName = "行动规划逐调用诊断",
+			Description = "开启后在详细过月诊断中记录行动规划内部每个方法的耗时。该诊断调用次数极多，平时建议关闭。",
+			GroupName = "过月优化",
+			DefaultValue = false,
 		},
 	},
 	SettingGroups = {
@@ -550,6 +668,9 @@ return {
 		},
 		[5] = {
 			Timestamp = 1782040778,
+		},
+		[6] = {
+			Timestamp = 1782880034,
 		},
 	},
 	FileId = 3749026190,

@@ -581,24 +581,10 @@ internal static class ViewExchangeBaseRefreshPreserveFilterStatePatch
         try
         {
             list.SortAndFilterController.RestoreFilterState();
-            RefreshInlineFilterButtons(list);
         }
         catch (Exception ex)
         {
             Debug.LogWarning("[BetterTaiwuScroll] Failed to restore exchange filter state after refresh: " + ex);
-        }
-    }
-
-    private static void RefreshInlineFilterButtons(ItemListScroll list)
-    {
-        try
-        {
-            var sortAndFilter = Traverse.Create(list).Field("sortAndFilter").GetValue<FilterView>();
-            InlineFilterButtonsController.Get(sortAndFilter)?.Refresh();
-        }
-        catch (Exception ex)
-        {
-            Debug.LogWarning("[BetterTaiwuScroll] Failed to refresh inline filter buttons after exchange refresh: " + ex);
         }
     }
 }
@@ -1692,6 +1678,534 @@ internal static class MakeSubtypeSelectionMemoryRestorePatch
     private static void Finalizer()
     {
         MakeSubtypeMemoryController.IsRefreshingSubtypeToggleGroup = false;
+    }
+}
+
+internal static class MakeSubPageMakePerfectMemoryController
+{
+    private const int NoPerfectEffectId = 0;
+    private const int NoPerfectDropdownIndex = -1;
+    private const string NoPerfectName = "no-perfect";
+    private const int RandomMakeTargetItemTypeBase = 100000;
+    private static readonly HashSet<MakeSubPageMake> ApplyingRestore = new HashSet<MakeSubPageMake>();
+    private static readonly MethodInfo RefreshPerfectDropdownMethod = AccessTools.Method(typeof(MakeSubPageMake), "RefreshPerfectDropdown", Type.EmptyTypes);
+    private static int RefreshingPerfectDropdownDepth;
+    private static int HandlingPerfectToggleDepth;
+
+    internal static bool SuppressSave => ApplyingRestore.Count > 0;
+    internal static bool IsRefreshingPerfectDropdown => RefreshingPerfectDropdownDepth > 0;
+    internal static bool IsHandlingPerfectToggle => HandlingPerfectToggleDepth > 0;
+
+    internal static void BeginRefreshPerfectDropdown()
+    {
+        RefreshingPerfectDropdownDepth++;
+    }
+
+    internal static void EndRefreshPerfectDropdown()
+    {
+        if (RefreshingPerfectDropdownDepth > 0)
+            RefreshingPerfectDropdownDepth--;
+    }
+
+    internal static void BeginPerfectToggleChange()
+    {
+        HandlingPerfectToggleDepth++;
+    }
+
+    internal static void EndPerfectToggleChange()
+    {
+        if (HandlingPerfectToggleDepth > 0)
+            HandlingPerfectToggleDepth--;
+    }
+
+    internal static void RestoreSelectionAndResources(MakeSubPageMake page)
+    {
+        if (!Plugin.EnableMakePerfectMemory || page == null || ApplyingRestore.Contains(page))
+            return;
+
+        try
+        {
+            if (!TryGetTargetContext(page, out var lifeSkillType, out var targetItemType, out var targetTemplateId))
+                return;
+
+            var selectionKey = BuildSelectionKey(lifeSkillType, targetItemType, targetTemplateId);
+            var selection = MemoryOptimizationSettingsStore.GetMakePerfectSelection(selectionKey);
+            var targetSlot = GetTargetSlot(page);
+            if (targetSlot == null)
+                return;
+
+            ApplyingRestore.Add(page);
+            try
+            {
+                var desiredPerfect = selection?.PerfectEnabled ?? false;
+                var needRefreshDropdown = targetSlot.IsToggleOn != desiredPerfect;
+                targetSlot.IsToggleOn = desiredPerfect;
+                if (needRefreshDropdown)
+                    InvokeRefreshPerfectDropdown(page);
+
+                if (desiredPerfect && selection?.HasSelection == true)
+                    RestoreDropdownSelection(page, selection);
+
+                RestoreResourceCounts(page);
+                InvokePrivate(page, "CheckCondition");
+            }
+            finally
+            {
+                ApplyingRestore.Remove(page);
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[BetterTaiwuScroll] Failed to restore make perfect memory for MakeSubPageMake: " + ex);
+        }
+    }
+
+    internal static void RestoreAfterPerfectDropdownRefresh(MakeSubPageMake page)
+    {
+        if (!Plugin.EnableMakePerfectMemory || page == null || ApplyingRestore.Contains(page) || IsHandlingPerfectToggle)
+            return;
+
+        RestoreSelectionAndResources(page);
+    }
+
+    internal static void RestoreResourcesOnly(MakeSubPageMake page)
+    {
+        if (!Plugin.EnableMakePerfectMemory || page == null || ApplyingRestore.Contains(page))
+            return;
+
+        try
+        {
+            ApplyingRestore.Add(page);
+            try
+            {
+                RestoreResourceCounts(page);
+                InvokePrivate(page, "CheckCondition");
+            }
+            finally
+            {
+                ApplyingRestore.Remove(page);
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[BetterTaiwuScroll] Failed to restore make resource memory for MakeSubPageMake: " + ex);
+        }
+    }
+
+    internal static void SaveSelection(MakeSubPageMake page)
+    {
+        if (!Plugin.EnableMakePerfectMemory || SuppressSave || IsRefreshingPerfectDropdown || page == null)
+            return;
+
+        try
+        {
+            if (!TryBuildSelectionEntry(page, out var selection))
+                return;
+
+            MemoryOptimizationSettingsStore.SetMakePerfect(selection, null);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[BetterTaiwuScroll] Failed to save make perfect selection memory for MakeSubPageMake: " + ex);
+        }
+    }
+
+    internal static void SaveResources(MakeSubPageMake page)
+    {
+        if (!Plugin.EnableMakePerfectMemory || SuppressSave || page == null)
+            return;
+
+        try
+        {
+            if (!TryBuildSelectionEntry(page, out var selection)
+                || !TryBuildResourceEntry(page, out var resource))
+                return;
+
+            MemoryOptimizationSettingsStore.SetMakePerfect(selection, resource);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[BetterTaiwuScroll] Failed to save make resource memory for MakeSubPageMake: " + ex);
+        }
+    }
+
+    internal static void SaveSelectionThenRestoreResources(MakeSubPageMake page)
+    {
+        if (!Plugin.EnableMakePerfectMemory || SuppressSave || IsRefreshingPerfectDropdown || page == null)
+            return;
+
+        SaveSelection(page);
+        RestoreResourcesOnly(page);
+    }
+
+    private static bool TryBuildSelectionEntry(MakeSubPageMake page, out MakePerfectSelectionMemoryEntry selection)
+    {
+        selection = null;
+        if (!TryGetTargetContext(page, out var lifeSkillType, out var targetItemType, out var targetTemplateId))
+            return false;
+
+        var targetSlot = GetTargetSlot(page);
+        if (targetSlot == null)
+            return false;
+
+        var perfectEnabled = targetSlot.IsToggleOn;
+        var selectedEffectId = -1;
+        var selectedDropdownIndex = -1;
+        var selectedName = string.Empty;
+        var hasSelection = perfectEnabled && TryGetSelectedPerfectEffect(page, out selectedEffectId, out selectedDropdownIndex, out selectedName);
+
+        selection = new MakePerfectSelectionMemoryEntry
+        {
+            MemoryKey = BuildSelectionKey(lifeSkillType, targetItemType, targetTemplateId),
+            LifeSkillType = lifeSkillType,
+            TargetItemType = targetItemType,
+            TargetTemplateId = targetTemplateId,
+            PerfectEnabled = perfectEnabled,
+            HasSelection = hasSelection,
+            SelectedSubtypeId = hasSelection ? selectedEffectId : -1,
+            SelectedTemplateId = hasSelection ? selectedDropdownIndex : -1,
+            SelectedName = hasSelection ? selectedName : string.Empty
+        };
+        return true;
+    }
+
+    private static bool TryBuildResourceEntry(MakeSubPageMake page, out MakePerfectResourceMemoryEntry resource)
+    {
+        resource = null;
+        if (!TryGetTargetContext(page, out var lifeSkillType, out var targetItemType, out var targetTemplateId))
+            return false;
+
+        GetActivePerfectResourceKey(page, out var effectId, out var dropdownIndex, out var effectName);
+        resource = new MakePerfectResourceMemoryEntry
+        {
+            MemoryKey = BuildResourceKey(lifeSkillType, targetItemType, targetTemplateId, effectId, dropdownIndex, effectName),
+            LifeSkillType = lifeSkillType,
+            TargetItemType = targetItemType,
+            TargetTemplateId = targetTemplateId,
+            SelectedSubtypeId = effectId,
+            SelectedTemplateId = dropdownIndex,
+            SelectedName = effectName,
+            Wood = GetCurrentResourceCount(page, 1),
+            Metal = GetCurrentResourceCount(page, 2),
+            Jade = GetCurrentResourceCount(page, 3),
+            Fabric = GetCurrentResourceCount(page, 4)
+        };
+        return true;
+    }
+
+    private static void RestoreDropdownSelection(MakeSubPageMake page, MakePerfectSelectionMemoryEntry selection)
+    {
+        var dropdown = GetPerfectDropdown(page);
+        if (dropdown == null || !dropdown.gameObject.activeSelf)
+            return;
+
+        var index = FindPerfectEffectDropdownIndex(page, selection.SelectedSubtypeId, selection.SelectedName);
+        if (index < 0)
+            return;
+
+        dropdown.SetValueWithoutNotify(index);
+        InvokePrivate(page, "OnPerfectDropdownValueChanged", index);
+    }
+
+    private static void RestoreResourceCounts(MakeSubPageMake page)
+    {
+        if (!TryGetTargetContext(page, out var lifeSkillType, out var targetItemType, out var targetTemplateId))
+            return;
+
+        GetActivePerfectResourceKey(page, out var effectId, out var dropdownIndex, out var effectName);
+        var resourceKey = BuildResourceKey(lifeSkillType, targetItemType, targetTemplateId, effectId, dropdownIndex, effectName);
+        var memory = MemoryOptimizationSettingsStore.GetMakePerfectResource(resourceKey);
+        var traverse = Traverse.Create(page);
+        var currentField = traverse.Field("_curMakeResourceCountInts");
+        var lastField = traverse.Field("_lastMakeResourceCountInts");
+        var resourceInts = currentField.GetValue<GameData.Domains.Character.ResourceInts>();
+        if (memory == null)
+        {
+            resourceInts.Initialize();
+            currentField.SetValue(resourceInts);
+            lastField.SetValue(resourceInts);
+            return;
+        }
+
+        var totalMax = Math.Max(0, (int)traverse.Field("_maxMakeResourceTotalCount").GetValue<short>());
+        var runningTotal = 0;
+
+        RestoreResource(1, memory.Wood);
+        RestoreResource(2, memory.Metal);
+        RestoreResource(3, memory.Jade);
+        RestoreResource(4, memory.Fabric);
+
+        currentField.SetValue(resourceInts);
+        lastField.SetValue(resourceInts);
+
+        void RestoreResource(sbyte type, int wanted)
+        {
+            var max = GetResourceMax(page, type);
+            var value = Mathf.Clamp(wanted, 0, max);
+            if (totalMax > 0)
+                value = Mathf.Clamp(value, 0, Math.Max(0, totalMax - runningTotal));
+
+            SetResourceCount(ref resourceInts, type, value);
+            runningTotal += value;
+        }
+    }
+
+    private static bool TryGetTargetContext(MakeSubPageMake page, out sbyte lifeSkillType, out int targetItemType, out int targetTemplateId)
+    {
+        lifeSkillType = -1;
+        targetItemType = -1;
+        targetTemplateId = -1;
+
+        var view = MakeSelectMaterialPatch.GetParentView(page);
+        var targetSlot = GetTargetSlot(page);
+        if (view == null || targetSlot == null || !targetSlot.IsValid || targetSlot.ItemData == null)
+            return false;
+
+        lifeSkillType = view.CurLifeSkillType;
+        if (lifeSkillType < 0)
+            return false;
+
+        var realKey = targetSlot.ItemData.RealKey;
+        if (realKey.HasTemplate && realKey.ItemType >= 0)
+        {
+            targetItemType = realKey.ItemType;
+            targetTemplateId = realKey.TemplateId;
+            return targetTemplateId >= 0;
+        }
+
+        var key = targetSlot.ItemData.Key;
+        if (key.HasTemplate)
+        {
+            targetItemType = key.ItemType >= 0 ? key.ItemType : GetRandomTargetItemType(page);
+            targetTemplateId = key.TemplateId;
+            return targetItemType >= 0 && targetTemplateId >= 0;
+        }
+
+        var makeItemSubTypeId = Traverse.Create(page).Field("_makeItemSubTypeId").GetValue<short>();
+        if (makeItemSubTypeId >= 0)
+        {
+            targetItemType = GetRandomTargetItemType(page);
+            targetTemplateId = makeItemSubTypeId;
+            return targetItemType >= 0;
+        }
+
+        return lifeSkillType >= 0 && targetItemType >= 0 && targetTemplateId >= 0;
+    }
+
+    private static int GetRandomTargetItemType(MakeSubPageMake page)
+    {
+        try
+        {
+            var makeItemTypeId = Traverse.Create(page).Field("_makeItemTypeId").GetValue<short>();
+            return RandomMakeTargetItemTypeBase + Math.Max(0, (int)makeItemTypeId);
+        }
+        catch
+        {
+            return RandomMakeTargetItemTypeBase;
+        }
+    }
+
+    private static void GetActivePerfectResourceKey(MakeSubPageMake page, out int effectId, out int dropdownIndex, out string effectName)
+    {
+        var targetSlot = GetTargetSlot(page);
+        if (targetSlot != null && targetSlot.IsToggleOn && TryGetSelectedPerfectEffect(page, out effectId, out dropdownIndex, out effectName))
+            return;
+
+        effectId = NoPerfectEffectId;
+        dropdownIndex = NoPerfectDropdownIndex;
+        effectName = NoPerfectName;
+    }
+
+    private static bool TryGetSelectedPerfectEffect(MakeSubPageMake page, out int effectId, out int dropdownIndex, out string effectName)
+    {
+        effectId = -1;
+        dropdownIndex = -1;
+        effectName = string.Empty;
+
+        var dropdown = GetPerfectDropdown(page);
+        var effectIds = Traverse.Create(page).Field("_perfectEffectIdList").GetValue<List<short>>();
+        if (dropdown == null || effectIds == null || effectIds.Count == 0)
+            return false;
+
+        dropdownIndex = Mathf.Clamp(dropdown.value, 0, effectIds.Count - 1);
+        effectId = effectIds[dropdownIndex];
+        effectName = GetPerfectEffectName(effectId);
+        return effectId >= 0;
+    }
+
+    private static int FindPerfectEffectDropdownIndex(MakeSubPageMake page, int effectId, string effectName)
+    {
+        var effectIds = Traverse.Create(page).Field("_perfectEffectIdList").GetValue<List<short>>();
+        if (effectIds == null || effectIds.Count == 0)
+            return -1;
+
+        if (effectId >= 0)
+        {
+            var index = effectIds.IndexOf((short)effectId);
+            if (index >= 0)
+                return index;
+        }
+
+        if (!string.IsNullOrEmpty(effectName))
+        {
+            for (var i = 0; i < effectIds.Count; i++)
+            {
+                if (GetPerfectEffectName(effectIds[i]) == effectName)
+                    return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static string GetPerfectEffectName(int effectId)
+    {
+        try
+        {
+            return effectId >= 0 ? EquipmentEffect.Instance[(short)effectId]?.Name ?? string.Empty : string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private static MakeTargetSlot GetTargetSlot(MakeSubPageMake page)
+    {
+        return Traverse.Create(page).Field("targetSlot").GetValue<MakeTargetSlot>();
+    }
+
+    private static FrameWork.UISystem.UIElements.CDropdown GetPerfectDropdown(MakeSubPageMake page)
+    {
+        return Traverse.Create(page).Field("perfectDropdown").GetValue<FrameWork.UISystem.UIElements.CDropdown>();
+    }
+
+    private static int GetCurrentResourceCount(MakeSubPageMake page, sbyte resourceType)
+    {
+        var resourceInts = Traverse.Create(page).Field("_curMakeResourceCountInts").GetValue<GameData.Domains.Character.ResourceInts>();
+        return GetResourceCount(resourceInts, resourceType);
+    }
+
+    private static int GetResourceMax(MakeSubPageMake page, sbyte resourceType)
+    {
+        var maxResourceInts = Traverse.Create(page).Field("_maxMakeResourceCountInts").GetValue<GameData.Domains.Character.ResourceInts>();
+        return Mathf.Max(0, GetResourceCount(maxResourceInts, resourceType));
+    }
+
+    private static int GetResourceCount(GameData.Domains.Character.ResourceInts resourceInts, sbyte resourceType)
+    {
+        return resourceType >= 0 && resourceType < 8 ? resourceInts.Get(resourceType) : 0;
+    }
+
+    private static void SetResourceCount(ref GameData.Domains.Character.ResourceInts resourceInts, sbyte resourceType, int count)
+    {
+        if (resourceType < 0 || resourceType >= 8)
+            return;
+
+        resourceInts.Set(resourceType, count);
+    }
+
+    private static string BuildSelectionKey(sbyte lifeSkillType, int targetItemType, int targetTemplateId)
+    {
+        return $"make-perfect-v2-selection:{lifeSkillType}:{targetItemType}:{targetTemplateId}";
+    }
+
+    private static string BuildResourceKey(sbyte lifeSkillType, int targetItemType, int targetTemplateId, int effectId, int dropdownIndex, string effectName)
+    {
+        return $"make-perfect-v2-resource:{lifeSkillType}:{targetItemType}:{targetTemplateId}:{effectId}:{dropdownIndex}:{effectName ?? string.Empty}";
+    }
+
+    private static void InvokeRefreshPerfectDropdown(MakeSubPageMake page)
+    {
+        RefreshPerfectDropdownMethod?.Invoke(page, Array.Empty<object>());
+    }
+
+    private static void InvokePrivate(MakeSubPageMake page, string methodName, params object[] args)
+    {
+        AccessTools.Method(typeof(MakeSubPageMake), methodName)?.Invoke(page, args);
+    }
+}
+
+[HarmonyPatch(typeof(MakeSubPageMake), "SelectTarget")]
+internal static class MakeSubPageMakePerfectMemoryRestoreTargetPatch
+{
+    private static void Postfix(MakeSubPageMake __instance)
+    {
+        MakeSubPageMakePerfectMemoryController.RestoreSelectionAndResources(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(MakeSubPageMake), "SelectMaterial")]
+internal static class MakeSubPageMakePerfectMemoryRestoreMaterialPatch
+{
+    private static void Postfix(MakeSubPageMake __instance)
+    {
+        MakeSubPageMakePerfectMemoryController.RestoreSelectionAndResources(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(MakeSubPageMake), "ResetResourceCount")]
+internal static class MakeSubPageMakePerfectMemoryRestoreAfterResourceResetPatch
+{
+    private static void Postfix(MakeSubPageMake __instance)
+    {
+        MakeSubPageMakePerfectMemoryController.RestoreResourcesOnly(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(MakeSubPageMake), "RefreshPerfectDropdown", new Type[] { })]
+internal static class MakeSubPageMakePerfectMemoryRefreshDropdownPatch
+{
+    private static void Prefix()
+    {
+        MakeSubPageMakePerfectMemoryController.BeginRefreshPerfectDropdown();
+    }
+
+    private static void Postfix(MakeSubPageMake __instance)
+    {
+        MakeSubPageMakePerfectMemoryController.RestoreAfterPerfectDropdownRefresh(__instance);
+    }
+
+    private static void Finalizer()
+    {
+        MakeSubPageMakePerfectMemoryController.EndRefreshPerfectDropdown();
+    }
+}
+
+[HarmonyPatch(typeof(MakeSubPageMake), "OnMakePerfectToggleValueChanged")]
+internal static class MakeSubPageMakePerfectMemorySaveTogglePatch
+{
+    private static void Prefix()
+    {
+        MakeSubPageMakePerfectMemoryController.BeginPerfectToggleChange();
+    }
+
+    private static void Postfix(MakeSubPageMake __instance)
+    {
+        MakeSubPageMakePerfectMemoryController.SaveSelectionThenRestoreResources(__instance);
+    }
+
+    private static void Finalizer()
+    {
+        MakeSubPageMakePerfectMemoryController.EndPerfectToggleChange();
+    }
+}
+
+[HarmonyPatch(typeof(MakeSubPageMake), "OnPerfectDropdownValueChanged")]
+internal static class MakeSubPageMakePerfectMemorySaveDropdownPatch
+{
+    private static void Postfix(MakeSubPageMake __instance)
+    {
+        MakeSubPageMakePerfectMemoryController.SaveSelectionThenRestoreResources(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(MakeSubPageMake), "OnResourceCountChanged")]
+internal static class MakeSubPageMakePerfectMemorySaveResourcePatch
+{
+    private static void Postfix(MakeSubPageMake __instance)
+    {
+        MakeSubPageMakePerfectMemoryController.SaveResources(__instance);
     }
 }
 
