@@ -1533,9 +1533,7 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
     private const float InlineButtonHeight = 38f;
     private const float InlineButtonMinWidth = 46f;
     private const float InlineButtonPreferredWidth = 60f;
-    // Cap wide enough to fit longer (e.g. English) filter labels without truncating;
-    // narrow labels stay compact because the width is panelWidth/columns clamped to this.
-    private const float InlineButtonMaxWidth = 150f;
+    private const float InlineButtonMaxWidth = 96f;
     private const float InlineButtonSpacing = 4f;
     private const float CompactSummaryHeight = 34f;
     private const int DelayedLayoutRefreshFrames = 2;
@@ -1561,7 +1559,6 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
     private bool _showRootSectionInPanel;
     private string _lastRefreshSignature;
     private readonly HashSet<int> _inlineOptionsWithFollowUpMenus = new();
-    private float _stableInlineWidth;
 
     internal static InlineFilterButtonsController GetOrAdd(SortAndFilter owner)
     {
@@ -1940,14 +1937,7 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
 
         var grid = contentRoot.GetComponent<GridLayoutGroup>();
         var panelHeight = InlinePanelHeight;
-        // Forcing this row's parent to fit `panelWidth` grows the parent, which then makes
-        // GetInlineAvailableWidth report a bigger width on the next click — a feedback loop
-        // that widens the row every time. Latch the first width and only ever let it shrink
-        // (a genuine resize-down), never grow, to break that loop.
-        var measuredWidth = GetInlineAvailableWidth(rect);
-        if (_stableInlineWidth <= 0f || measuredWidth < _stableInlineWidth - 4f)
-            _stableInlineWidth = measuredWidth;
-        var panelWidth = _stableInlineWidth;
+        var panelWidth = GetInlineAvailableWidth(rect);
         if (grid != null)
         {
             var activeCount = Math.Max(CountActiveChildren(contentRoot), 1);
@@ -2003,10 +1993,6 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
         if (availableWidth <= 0f)
             return activeCount;
 
-        var oneRowMinWidth = activeCount * InlineButtonMinWidth + InlineButtonSpacing * Math.Max(activeCount - 1, 0);
-        if (oneRowMinWidth <= availableWidth)
-            return activeCount;
-
         var preferredColumns = Mathf.FloorToInt((availableWidth + InlineButtonSpacing) / (InlineButtonPreferredWidth + InlineButtonSpacing));
         return Mathf.Clamp(preferredColumns, 1, activeCount);
     }
@@ -2020,24 +2006,8 @@ internal sealed class InlineFilterButtonsController : MonoBehaviour
             width = Mathf.Abs(rect.rect.width);
         if (rect.parent is RectTransform parent)
             width = Mathf.Max(width, Mathf.Abs(parent.rect.width));
-        if (_owner != null && _entryRect != null)
-            width = Mathf.Max(width, GetLargestOwnerLocalAncestorWidth(_entryRect));
 
         return Mathf.Max(width, InlineButtonMinWidth);
-    }
-
-    private float GetLargestOwnerLocalAncestorWidth(RectTransform start)
-    {
-        var width = 0f;
-        var ownerTransform = _owner == null ? null : _owner.transform;
-        for (var current = start; current != null; current = current.parent as RectTransform)
-        {
-            width = Mathf.Max(width, Mathf.Abs(current.rect.width));
-            if (ReferenceEquals(current, ownerTransform))
-                break;
-        }
-
-        return width;
     }
 
     private static void ApplyInlineOptionTextLayout(RectTransform contentRoot)
