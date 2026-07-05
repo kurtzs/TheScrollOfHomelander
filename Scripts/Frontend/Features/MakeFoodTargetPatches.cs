@@ -56,7 +56,7 @@ internal static class MakeSubPageMakeHelperFoodTargetNamePatch
     private static void Postfix(short tempId, ref string __result)
     {
         if (MakeFoodTargetSupport.IsCombinedFoodTarget(tempId))
-            __result = "食物";
+            __result = ModLocalization.T("Food");
     }
 }
 

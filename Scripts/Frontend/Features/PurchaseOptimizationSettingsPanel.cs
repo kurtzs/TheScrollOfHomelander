@@ -26,18 +26,37 @@ internal sealed class PurchaseOptimizationSettingsPanel : MonoBehaviour
     private const float RowSpacing = 12f;
     private const int PanelSortingOrder = 5000;
 
+    // English source keys; localized for display via ModLocalization.T(...).
     private static readonly string[] GradeNames =
     {
-        "神一品",
-        "绝二品",
-        "超三品",
-        "极四品",
-        "秘五品",
-        "妙六品",
-        "上七品",
-        "中八品",
-        "下九品"
+        "Tier 1",
+        "Tier 2",
+        "Tier 3",
+        "Tier 4",
+        "Tier 5",
+        "Tier 6",
+        "Tier 7",
+        "Tier 8",
+        "Tier 9"
     };
+
+    private static string[] Localized(string[] keys)
+    {
+        var result = new string[keys.Length];
+        for (var i = 0; i < keys.Length; i++)
+            result[i] = ModLocalization.T(keys[i]);
+        return result;
+    }
+
+    // The language-independent identity of a row, stored as "Setting_<English key>".
+    private static string RowKey(Component item)
+    {
+        var name = item == null ? null : item.gameObject.name;
+        const string prefix = "Setting_";
+        return !string.IsNullOrEmpty(name) && name.StartsWith(prefix, StringComparison.Ordinal)
+            ? name.Substring(prefix.Length)
+            : name;
+    }
 
     private static PurchaseOptimizationSettingsPanel _current;
     private static bool _requestingArchiveTemplate;
@@ -169,7 +188,7 @@ internal sealed class PurchaseOptimizationSettingsPanel : MonoBehaviour
         scroll ??= FindComponentByTypeName("InfinityScroll");
         confirmBtn ??= FindDeep(transform, "EnterGame")?.GetComponent<CButton>();
         if (title != null)
-            title.SetText("批量采购设置");
+            title.SetText(ModLocalization.T("Bulk Purchase Settings"));
 
         if (scroll != null)
             scroll.gameObject.SetActive(false);
@@ -424,13 +443,13 @@ internal sealed class PurchaseOptimizationSettingsPanel : MonoBehaviour
         if (_contentRoot == null)
             return;
 
-        AddDropdownRow("采购的最低品级", GradeNames, () => GradeToIndex(PurchaseOptimizationSettingsStore.Current.LowestPurchaseGrade), OnLowestGradeChanged);
-        AddDropdownRow("采购的最高品级", GradeNames, () => GradeToIndex(PurchaseOptimizationSettingsStore.Current.HighestPurchaseGrade), OnHighestGradeChanged);
-        AddBoolRow("不采购涨价的物品", () => PurchaseOptimizationSettingsStore.Current.SkipPriceIncreasedItems, value => PurchaseOptimizationSettingsStore.Current.SkipPriceIncreasedItems = value);
-        AddBoolRow("不采购原价的物品", () => PurchaseOptimizationSettingsStore.Current.SkipOriginalPriceItems, value => PurchaseOptimizationSettingsStore.Current.SkipOriginalPriceItems = value);
-        AddBoolRow("未解锁精纯商店也采购", () => PurchaseOptimizationSettingsStore.Current.IncludeLimitedPurityLockedLevels, value => PurchaseOptimizationSettingsStore.Current.IncludeLimitedPurityLockedLevels = value);
-        AddBoolRow("批量采购购买药材引子", () => PurchaseOptimizationSettingsStore.Current.IncludeMedicineMaterials, value => PurchaseOptimizationSettingsStore.Current.IncludeMedicineMaterials = value);
-        AddBoolRow("批量采购购买毒物引子", () => PurchaseOptimizationSettingsStore.Current.IncludePoisonMaterials, value => PurchaseOptimizationSettingsStore.Current.IncludePoisonMaterials = value);
+        AddDropdownRow("Lowest Purchase Tier", Localized(GradeNames), () => GradeToIndex(PurchaseOptimizationSettingsStore.Current.LowestPurchaseGrade), OnLowestGradeChanged);
+        AddDropdownRow("Highest Purchase Tier", Localized(GradeNames), () => GradeToIndex(PurchaseOptimizationSettingsStore.Current.HighestPurchaseGrade), OnHighestGradeChanged);
+        AddBoolRow("Skip Price-Increased Items", () => PurchaseOptimizationSettingsStore.Current.SkipPriceIncreasedItems, value => PurchaseOptimizationSettingsStore.Current.SkipPriceIncreasedItems = value);
+        AddBoolRow("Skip Original-Price Items", () => PurchaseOptimizationSettingsStore.Current.SkipOriginalPriceItems, value => PurchaseOptimizationSettingsStore.Current.SkipOriginalPriceItems = value);
+        AddBoolRow("Buy from Locked Pure-Essence Shops", () => PurchaseOptimizationSettingsStore.Current.IncludeLimitedPurityLockedLevels, value => PurchaseOptimizationSettingsStore.Current.IncludeLimitedPurityLockedLevels = value);
+        AddBoolRow("Bulk-Buy Medicine Reagents", () => PurchaseOptimizationSettingsStore.Current.IncludeMedicineMaterials, value => PurchaseOptimizationSettingsStore.Current.IncludeMedicineMaterials = value);
+        AddBoolRow("Bulk-Buy Poison Reagents", () => PurchaseOptimizationSettingsStore.Current.IncludePoisonMaterials, value => PurchaseOptimizationSettingsStore.Current.IncludePoisonMaterials = value);
 
         RefreshValues();
     }
@@ -528,7 +547,7 @@ internal sealed class PurchaseOptimizationSettingsPanel : MonoBehaviour
         var labelText = Traverse.Create(row.GetComponent<SysSetting.SettingItemBase>()).Field("labelText").GetValue<TextMeshProUGUI>();
         if (labelText != null)
         {
-            labelText.SetText(label);
+            labelText.SetText(ModLocalization.T(label));
             labelText.enableAutoSizing = true;
             labelText.fontSizeMin = 18f;
             labelText.fontSizeMax = 26f;
@@ -545,33 +564,33 @@ internal sealed class PurchaseOptimizationSettingsPanel : MonoBehaviour
 
         foreach (var item in GetComponentsInChildren<SysSetting.BoolSettingItem>(true))
         {
-            var label = Traverse.Create(item).Field("labelText").GetValue<TextMeshProUGUI>()?.text;
+            var label = RowKey(item);
             var toggle = Traverse.Create(item).Field("toggle").GetValue<FwUi.CToggle>();
             if (toggle == null)
                 continue;
 
             toggle.SetIsOnWithoutNotify(label switch
             {
-                "不采购涨价的物品" => PurchaseOptimizationSettingsStore.Current.SkipPriceIncreasedItems,
-                "不采购原价的物品" => PurchaseOptimizationSettingsStore.Current.SkipOriginalPriceItems,
-                "未解锁精纯商店也采购" => PurchaseOptimizationSettingsStore.Current.IncludeLimitedPurityLockedLevels,
-                "批量采购购买药材引子" => PurchaseOptimizationSettingsStore.Current.IncludeMedicineMaterials,
-                "批量采购购买毒物引子" => PurchaseOptimizationSettingsStore.Current.IncludePoisonMaterials,
+                "Skip Price-Increased Items" => PurchaseOptimizationSettingsStore.Current.SkipPriceIncreasedItems,
+                "Skip Original-Price Items" => PurchaseOptimizationSettingsStore.Current.SkipOriginalPriceItems,
+                "Buy from Locked Pure-Essence Shops" => PurchaseOptimizationSettingsStore.Current.IncludeLimitedPurityLockedLevels,
+                "Bulk-Buy Medicine Reagents" => PurchaseOptimizationSettingsStore.Current.IncludeMedicineMaterials,
+                "Bulk-Buy Poison Reagents" => PurchaseOptimizationSettingsStore.Current.IncludePoisonMaterials,
                 _ => toggle.isOn
             });
         }
 
         foreach (var item in GetComponentsInChildren<SysSetting.EnumSettingItem>(true))
         {
-            var label = Traverse.Create(item).Field("labelText").GetValue<TextMeshProUGUI>()?.text;
+            var label = RowKey(item);
             var dropdown = Traverse.Create(item).Field("dropdown").GetValue<FwUi.CDropdown>();
             if (dropdown == null)
                 continue;
 
             dropdown.SetValueWithoutNotify(label switch
             {
-                "采购的最低品级" => GradeToIndex(PurchaseOptimizationSettingsStore.Current.LowestPurchaseGrade),
-                "采购的最高品级" => GradeToIndex(PurchaseOptimizationSettingsStore.Current.HighestPurchaseGrade),
+                "Lowest Purchase Tier" => GradeToIndex(PurchaseOptimizationSettingsStore.Current.LowestPurchaseGrade),
+                "Highest Purchase Tier" => GradeToIndex(PurchaseOptimizationSettingsStore.Current.HighestPurchaseGrade),
                 _ => dropdown.value
             });
         }
@@ -754,6 +773,10 @@ internal sealed class PurchaseOptimizationSettingsPanel : MonoBehaviour
             target.gameObject.SetActive(false);
     }
 
+    // Revert-archive column headers, matched in whatever language the game renders them.
+    private static readonly HashSet<string> ArchiveHeaderLabels =
+        ModLocalization.BuildBilingualLabelSet(new[] { "头像", "名字", "第几个", "存档时间", "所在地点" });
+
     private void HideArchiveHeaderRow()
     {
         var headerTexts = new List<Transform>();
@@ -762,16 +785,8 @@ internal sealed class PurchaseOptimizationSettingsPanel : MonoBehaviour
             if (text == null)
                 continue;
 
-            switch (text.text)
-            {
-                case "头像":
-                case "名字":
-                case "第几个":
-                case "存档时间":
-                case "所在地点":
-                    headerTexts.Add(text.transform);
-                    break;
-            }
+            if (ArchiveHeaderLabels.Contains(text.text))
+                headerTexts.Add(text.transform);
         }
 
         if (headerTexts.Count == 0)

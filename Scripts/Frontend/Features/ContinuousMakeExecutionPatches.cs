@@ -196,7 +196,7 @@ internal static class ContinuousMakeExecutionController
         var stopRequested = StopRequestedViews.Contains(view);
 
         if (text != null)
-            text.text = "停止制作";
+            text.text = ModLocalization.T("Stop Crafting");
         if (button != null)
             button.interactable = !stopRequested;
         if (tip != null)
