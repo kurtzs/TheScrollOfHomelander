@@ -1,0 +1,9 @@
+# Build output
+Plugins/Back/
+Plugins/Front/
+out/
+bin/
+obj/
+
+# Debug symbols
+*.pdb
