@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="icon.png" alt="Better Taiwu Scroll icon" width="500">
+  <img src="icon.png">
 </p>
 <h1 align="center">
 Better Taiwu Scroll (太祖绘卷)
