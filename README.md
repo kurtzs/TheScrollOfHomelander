@@ -1,9 +1,9 @@
 <p align="center">
   <img src="icon.png" alt="Better Taiwu Scroll icon" width="500">
 </p>
-
-# Better Taiwu Scroll (太祖绘卷)
-
+<h1 align="center">
+Better Taiwu Scroll (太祖绘卷)
+</h1>
 A quality-of-life mod for **The Scroll of Taiwu** (太吾绘卷, Remake) that makes the
 day-to-day interface far less painful: compact UI, batch crafting, bulk shop purchasing,
 advanced item filtering with text search, smarter shortcuts, plus a handful of combat, map,
