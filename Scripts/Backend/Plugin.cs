@@ -14,7 +14,28 @@ public sealed class Plugin : TaiwuRemakePlugin
     {
         AdvanceMonthDiagnosticsSettings.Load(ModIdStr);
         _harmony = new Harmony("taiwu-studio.the-scroll-of-homelander.backend");
-        _harmony.PatchAll(typeof(Plugin).Assembly);
+        ApplyPatchesIsolated(_harmony);
+    }
+
+    // Apply each Harmony patch class independently so that one patch whose target can't be
+    // resolved (e.g. a game update changes a method signature) disables only that optimization
+    // instead of aborting PatchAll and leaving the whole backend unpatched. Failures are
+    // swallowed per class (the backend assembly has no logging/UnityEngine dependency).
+    private static void ApplyPatchesIsolated(Harmony harmony)
+    {
+        foreach (var type in AccessTools.GetTypesFromAssembly(typeof(Plugin).Assembly))
+        {
+            if (type == null)
+                continue;
+
+            try
+            {
+                harmony.CreateClassProcessor(type).Patch();
+            }
+            catch
+            {
+            }
+        }
     }
 
     public override void OnModSettingUpdate()

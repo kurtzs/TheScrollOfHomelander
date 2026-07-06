@@ -84,7 +84,7 @@ public sealed class Plugin : TaiwuRemakePlugin
         MemoryOptimizationSettingsStore.Load();
         PurchaseOptimizationSettingsStore.Load();
         _harmony = new Harmony("taiwu-studio.better-taiwu-scroll.frontend");
-        _harmony.PatchAll(typeof(Plugin).Assembly);
+        ApplyPatchesIsolated(_harmony);
         GradeColorOptimizationSupport.ApplyOrRestore();
         MapBlockCharListMerchantIconSupport.RefreshAllActive();
     }
@@ -125,6 +125,28 @@ public sealed class Plugin : TaiwuRemakePlugin
         TooltipGradeBackgroundSpriteSupport.Clear();
         _harmony?.UnpatchSelf();
         _harmony = null;
+    }
+
+    // Apply each Harmony patch class independently. PatchAll aborts on the first patch whose
+    // target can't be resolved (e.g. a game update renames/re-signs a method), which would take
+    // down every remaining feature at once. Isolating each class means a single unresolved
+    // target only disables that one feature.
+    private static void ApplyPatchesIsolated(Harmony harmony)
+    {
+        foreach (var type in AccessTools.GetTypesFromAssembly(typeof(Plugin).Assembly))
+        {
+            if (type == null)
+                continue;
+
+            try
+            {
+                harmony.CreateClassProcessor(type).Patch();
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[BetterTaiwuScroll] Failed to apply patch class '{type.FullName}': {e}");
+            }
+        }
     }
 
     private static void LoadSettings(string modIdStr)
