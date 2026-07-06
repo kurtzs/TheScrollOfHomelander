@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="icon.png" alt="Better Taiwu Scroll icon" width="500">
+</p>
+
 # Better Taiwu Scroll (太祖绘卷)
 
 A quality-of-life mod for **The Scroll of Taiwu** (太吾绘卷, Remake) that makes the
