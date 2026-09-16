@@ -1,0 +1,7 @@
+interface:
+  display_name: "Taiwu Studio Industrial"
+  short_description: "Industrial workflow for Taiwu Studio Mod IDE"
+  default_prompt: "Use $taiwu-studio-industrial to continue building the Taiwu Studio Mod IDE."
+
+policy:
+  allow_implicit_invocation: true

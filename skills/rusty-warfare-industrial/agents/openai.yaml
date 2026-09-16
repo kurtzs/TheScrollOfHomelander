@@ -1,0 +1,4 @@
+interface:
+  display_name: "Rusty Warfare Industrial"
+  short_description: "Refactor Rusty Warfare with industrial architecture."
+  default_prompt: "Use this skill to audit and refactor Rusty Warfare with industrial-quality architecture, content-package design, networking boundaries, and Godot frontend discipline."

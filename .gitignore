@@ -1,0 +1,10 @@
+# .NET 编译中间产物（保留 bin\Release 下的工具可执行文件）
+tools/**/obj/
+tools/**/bin/Debug/
+
+# IDE / 系统
+.vs/
+*.user
+*.suo
+Thumbs.db
+Desktop.ini

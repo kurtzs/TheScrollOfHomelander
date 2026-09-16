@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bevy Northstar Pathfinding"
+  short_description: "Use bevy_northstar for RTS pathfinding."
+  default_prompt: "Use this skill for Bevy Northstar HPA*, grid navigation, movement masks, blocking, and RTS pathfinding integration."

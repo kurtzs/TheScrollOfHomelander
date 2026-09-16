@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lightyear RTS Networking"
+  short_description: "Use Lightyear 0.26 for RTS networking."
+  default_prompt: "Use this skill for Lightyear 0.26.4 client-server replication, prediction, interpolation, input, transport, and RTS networking work."

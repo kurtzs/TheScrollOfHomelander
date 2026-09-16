@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bevy ECS Runtime"
+  short_description: "Work with Bevy 0.18 ECS runtime architecture."
+  default_prompt: "Use this skill for Bevy 0.18.1 ECS, schedules, plugins, resources, tests, and headless gameplay runtime work."
