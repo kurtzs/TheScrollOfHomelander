@@ -11,7 +11,7 @@
 | mods\TheScrollOfHomelander | 正式 Mod 工程：Scripts\Frontend、Scripts\Backend、Scripts\Shared、Assets、GradeBackgrounds、Config.lua、Settings.Lua，以及已编译的 Plugins\Front、Plugins\Back |
 | tools\TaiwuStudio.RoslynWorker | 编译程序（C# 前端/后端编译，基于 Roslyn），可执行文件在 bin\Release\net8.0\TaiwuStudio.RoslynWorker.exe |
 | tools\TaiwuStudio.DecompilerWorker | 反编译程序（读取游戏程序集，查询类型/成员/源码），可执行文件在 bin\Release\net8.0\TaiwuStudio.DecompilerWorker.exe |
-| skills | Codex 技能说明，其中 taiwu-mod-authoring、taiwu-decompiled-api、taiwu-studio-industrial 与本工程直接相关 |
+| skills | 太吾 Mod 相关技能，仅保留 taiwu-mod-authoring、taiwu-decompiled-api、taiwu-studio-industrial |
 
 `mods` 与 `tools` 的相对层级刻意与源仓库保持一致，因此工程内的 Build-Deploy.ps1 无需修改即可使用。
 

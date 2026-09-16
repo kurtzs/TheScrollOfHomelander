@@ -1,4 +1,0 @@
-interface:
-  display_name: "Godot Rust Frontend"
-  short_description: "Keep Godot presentation clean over Rust GDExtension."
-  default_prompt: "Use this skill for Godot 4 frontend, GDScript organization, gdext bindings, snapshot-driven presentation, and UI/runtime boundary work."

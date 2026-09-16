@@ -1,7 +1,0 @@
-interface:
-  display_name: "egui 0.34 Frontend"
-  short_description: "egui 0.34 desktop UI migration and QA"
-  default_prompt: "Use $egui-034-frontend to update or build an egui 0.34 desktop UI."
-
-policy:
-  allow_implicit_invocation: true

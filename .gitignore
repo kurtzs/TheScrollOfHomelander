@@ -8,3 +8,7 @@ tools/**/bin/Debug/
 *.suo
 Thumbs.db
 Desktop.ini
+
+# Python 缓存
+__pycache__/
+*.pyc

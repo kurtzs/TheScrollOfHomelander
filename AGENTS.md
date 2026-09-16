@@ -9,7 +9,7 @@
 - `mods\TheScrollOfHomelander`：Mod 正式源码、资产、Config/Settings 与已构建的 DLL/PDB。
 - `tools\TaiwuStudio.RoslynWorker`：前端/后端编译程序（.NET 8），可执行文件在 `bin\Release\net8.0`。
 - `tools\TaiwuStudio.DecompilerWorker`：游戏程序集反编译与接口查询程序，可执行文件在 `bin\Release\net8.0`。
-- `skills`：本机可用的 Codex 技能副本，其中 `taiwu-mod-authoring`、`taiwu-decompiled-api`、`taiwu-studio-industrial` 与本工程直接相关。
+- `skills`：只保留太吾 Mod 相关技能：`taiwu-mod-authoring`（Mod 开发/编译/部署）、`taiwu-decompiled-api`（游戏程序集接口查询）、`taiwu-studio-industrial`（Taiwu Studio 架构）。
 
 旧目录 `C:\Users\Administrator\Documents\GitHub\taiwu_studio` 自本日期起只作历史存档；其 `mods\` 与 `tools\` 不再作为开发目标，也不要向它的 GitHub 远端推送本工作区的提交。
 
