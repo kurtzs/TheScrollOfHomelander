@@ -39,6 +39,7 @@ internal static partial class ContinuousMakeExecutionController
     internal static void Reset()
     {
         MakeExecutionLifetime.CancelAll();
+        MakeConfirmPatch.WaitingPages.Clear();
         PendingPages.Clear();
         AwaitingDataRefreshViews.Clear();
         RunningPages.Clear();
@@ -78,7 +79,8 @@ internal static partial class ContinuousMakeExecutionController
             return false;
 
         var view = MakeSelectMaterialPatch.GetParentView(page);
-        if (!ContinuousMakeUiController.IsContinuousMakeEnabledFor(view))
+        if (view == null || !Plugin.IsEnabledForLifeSkill(view.CurLifeSkillType)
+            || !ContinuousMakeUiController.IsContinuousMakeEnabledFor(view))
             return true;
 
         // Continuous mode owns the complete first make. Do not let the native
@@ -145,6 +147,7 @@ internal static partial class ContinuousMakeExecutionController
         var view = MakeSelectMaterialPatch.GetParentView(page);
         if (view == null
             || !ShouldRun(page)
+            || MakeSubmissionRequest.IsPending(page)
             || ActiveContinuousViews.Contains(view)
             || RunningPages.Contains(page)
             || !CanStartCoroutine(page))
@@ -153,7 +156,7 @@ internal static partial class ContinuousMakeExecutionController
         if (ResultCollectors.TryGetValue(view, out var existingCollector) && existingCollector.Finishing)
             return false;
 
-        var material = GetNextMaterial(page);
+        var material = GetNextMaterialForBatchStart(page);
         if (material == null)
         {
             LogNoEligibleMaterial(view, "start");
@@ -173,6 +176,7 @@ internal static partial class ContinuousMakeExecutionController
             + " with material " + material.RealKey.TemplateId
             + " (grade=" + RawGradeToDisplay(rawGrade)
             + ", allowed=" + settings.HighestMaterialGrade + "-" + settings.LowestMaterialGrade + ").");
+        LogCombinedFoodGate(page, material);
 
         MakeExecutionLifetime.Run(page, ContinueAfterRefresh(page));
         return true;
@@ -208,7 +212,7 @@ internal static partial class ContinuousMakeExecutionController
             return;
         }
 
-        if (GetNextMaterial(page) == null)
+        if (GetNextMaterialForBatchStart(page) == null)
         {
             LogNoEligibleMaterial(view, "refresh");
             CancelExpiredMaterialSelection(page);
@@ -228,11 +232,89 @@ internal static partial class ContinuousMakeExecutionController
         ForceMaterialListRerender(page);
         if (canceled)
             RefreshMakeCondition(page);
+        RefreshMaterialAvailability(page, "batch refresh");
     }
 
     internal static void CleanupAfterReloadSlot(MakeSubPageMake page)
     {
         CancelExpiredMaterialSelection(page);
+        RefreshMaterialAvailability(page, "reload slot");
+    }
+
+    // Display amounts are updated locally during a burst and by RequestData afterwards.
+    internal static void RefreshMaterialAvailability(MakeSubPageMake page, string reason)
+    {
+        if (page == null || page.gameObject == null || !page.gameObject.activeInHierarchy)
+            return;
+
+        try
+        {
+            RemoveZeroAmountMaterials(page, "_allMaterialList", false);
+            var removedFromVisible = RemoveZeroAmountMaterials(page, "_materialList", false);
+            // Re-render even when nothing was removed locally: the scroll keeps its own
+            // filtered copy, and a stale positive amount only disappears after a rebuild.
+            ForceMaterialListRerender(page);
+            var canceled = CancelExpiredMaterialSelection(page);
+            if (removedFromVisible || canceled)
+                RefreshMakeCondition(page);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[BetterTaiwuScroll] Continuous make material availability refresh failed ("
+                + reason + "): " + ex.Message);
+        }
+    }
+
+    private static bool IsSameMaterialSource(ItemDisplayData left, ItemDisplayData right)
+    {
+        return left != null
+            && right != null
+            && left.RealKey == right.RealKey
+            && left.ItemSourceTypeEnum == right.ItemSourceTypeEnum;
+    }
+
+    /// <summary>
+    /// Mirrors a locally consumed amount onto every list entry that shows the same
+    /// material from the same source. The page's material lists and the slots can hold
+    /// different ItemDisplayData instances for one stack, so updating only the selected
+    /// instance leaves other rows showing an amount that was already consumed.
+    /// </summary>
+    private static void SyncConsumedMaterialAmount(MakeSubPageMake page, ItemDisplayData material, int remaining)
+    {
+        if (page == null || material == null)
+            return;
+
+        try
+        {
+            var traverse = Traverse.Create(page);
+            foreach (var fieldName in new[] { "_allMaterialList", "_materialList" })
+            {
+                var list = traverse.Field(fieldName).GetValue<List<ItemDisplayData>>();
+                if (list == null)
+                    continue;
+
+                foreach (var entry in list)
+                {
+                    if (IsSameMaterialSource(entry, material))
+                        entry.Amount = remaining;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[BetterTaiwuScroll] Continuous make material amount sync failed: " + ex.Message);
+        }
+    }
+
+    internal static void RemoveZeroAmountMaterialsFromVisibleList(MakeSubPageMake page)
+    {
+        var removed = RemoveZeroAmountMaterials(page, "_materialList", false);
+        if (!removed)
+            return;
+
+        ForceMaterialListRerender(page);
+        CancelExpiredMaterialSelection(page);
+        MakePageDeferredActionQueue.RequestCheckCondition(page);
     }
 
     internal static void RemoveZeroAmountMaterialsFromAllList(MakeSubPageMake page)
@@ -240,13 +322,31 @@ internal static partial class ContinuousMakeExecutionController
         RemoveZeroAmountMaterials(page, "_allMaterialList", false);
     }
 
-    internal static void RemoveZeroAmountMaterialsFromVisibleList(MakeSubPageMake page)
+    /// <summary>
+    /// Runs after the page has received a make result, i.e. once per craft and at the end
+    /// of a batch, to drop catalysts that were just used up. Removing rows here cannot
+    /// recurse: the condition refresh below only runs when a row was actually removed.
+    /// </summary>
+    internal static void ReconcileMaterialListAfterMakeResult(MakeSubPageMake page)
     {
-        if (!RemoveZeroAmountMaterials(page, "_materialList", true))
+        if (page == null || page.gameObject == null || !page.gameObject.activeInHierarchy)
             return;
 
-        CancelExpiredMaterialSelection(page);
-        RefreshMakeCondition(page);
+        try
+        {
+            RemoveZeroAmountMaterials(page, "_allMaterialList", false);
+            var removed = RemoveZeroAmountMaterials(page, "_materialList", false);
+            if (!removed)
+                return;
+
+            ForceMaterialListRerender(page);
+            if (CancelExpiredMaterialSelection(page))
+                RefreshMakeCondition(page);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[BetterTaiwuScroll] Continuous make material reconcile failed: " + ex.Message);
+        }
     }
 
     internal static bool ShouldBlockZeroAmountMaterialClick(MakeSubPageMake page, object content)
@@ -265,7 +365,8 @@ internal static partial class ContinuousMakeExecutionController
         if (scroll == null)
             return;
 
-        if (scroll.GetComponentInParent<MakeSubPageMake>(true) != null)
+        var page = scroll.GetComponentInParent<MakeSubPageMake>(true);
+        if (page != null && ReferenceEquals(Traverse.Create(page).Field("materialListScroll").GetValue(), scroll))
             MaterialListScrolls.Add(scroll);
     }
 
@@ -291,6 +392,8 @@ internal static partial class ContinuousMakeExecutionController
 
                 if (i == selectedIndex)
                     removedSelected = true;
+                else if (i < selectedIndex)
+                    selectedIndex--;
 
                 filteredData.RemoveAt(i);
                 removedAny = true;
@@ -298,6 +401,8 @@ internal static partial class ContinuousMakeExecutionController
 
             if (removedSelected || selectedIndex >= filteredData.Count)
                 traverse.Field("_selectedIndex").SetValue(-1);
+            else if (removedAny)
+                traverse.Field("_selectedIndex").SetValue(selectedIndex);
 
             if (removedAny)
                 AccessTools.Method(scroll.GetType(), "RefreshEmpty")?.Invoke(scroll, Array.Empty<object>());
@@ -455,6 +560,9 @@ internal static partial class ContinuousMakeExecutionController
             }
             else if (current())
             {
+                // Nothing was submitted, but the lists may still hold amounts consumed
+                // earlier in this session; re-sync before the batch button is judged.
+                RefreshMaterialAvailability(page, "batch end");
                 FinishAndShowResults(view, page);
             }
         }
@@ -515,6 +623,21 @@ internal static partial class ContinuousMakeExecutionController
     {
         var view = MakeSelectMaterialPatch.GetParentView(page);
         return view != null && StopRequestedViews.Contains(view);
+    }
+
+    /// <summary>
+    /// Re-syncs the visible material list once and then looks for the next eligible
+    /// catalyst, so a stale row left over from an earlier batch cannot make the batch
+    /// button look dead while a valid catalyst is still listed underneath it.
+    /// </summary>
+    private static ItemDisplayData GetNextMaterialForBatchStart(MakeSubPageMake page)
+    {
+        var material = GetNextMaterial(page);
+        if (material != null)
+            return material;
+
+        RefreshMaterialAvailability(page, "batch start");
+        return GetNextMaterial(page);
     }
 
     private static int GetBatchMakeSpeed(ContinuousMakeSettings settings)
@@ -703,16 +826,17 @@ internal static partial class ContinuousMakeExecutionController
 
     private static ItemDisplayData GetNextMaterial(MakeSubPageMake page)
     {
-        var targetSlot = Traverse.Create(page).Field("targetSlot").GetValue<MakeTargetSlot>();
+        var traverse = Traverse.Create(page);
+        var targetSlot = traverse.Field("targetSlot").GetValue<MakeTargetSlot>();
         if (targetSlot == null || !targetSlot.IsValid)
             return null;
 
         var randomMake = MakeSubPageMakeHelper.CheckIsRandomMake(targetSlot.ItemData);
         var randomMakeSubType = randomMake
-            ? (short)GetIntField(Traverse.Create(page), "_currentSelectRandomMakeItemSubType", -1)
+            ? targetSlot.ItemData.RealKey.TemplateId
             : (short)-1;
 
-        var allMaterials = Traverse.Create(page).Field("_allMaterialList").GetValue() as IEnumerable;
+        var allMaterials = traverse.Field("_allMaterialList").GetValue() as IEnumerable;
         if (allMaterials == null)
             return null;
 
@@ -763,9 +887,14 @@ internal static partial class ContinuousMakeExecutionController
             && ContinuousMakeSettingsStore.IsSourceAllowed(view.CurLifeSkillType, material.ItemSourceTypeEnum);
     }
 
+    private static bool CanMaterialCookCombinedFoodGroup(ItemDisplayData material)
+    {
+        return MakeFoodTargetSupport.CanMakeCombinedFood(material);
+    }
+
     private static bool IsMaterialCompatibleWithTarget(MakeSubPageMake page, ItemDisplayData material, bool randomMake, short randomMakeSubType)
     {
-        if (page == null || material == null)
+        if (page == null || material == null || material.RealKey.ItemType != 5)
             return false;
 
         if (randomMake)
@@ -776,12 +905,6 @@ internal static partial class ContinuousMakeExecutionController
             return false;
 
         var target = targetSlot.ItemData;
-        if (MakeSubPageMakeHelper.CheckIsRandomMake(target))
-            return MakeSubPageMakeHelper.CheckCanMakeTargetRandomType(randomMakeSubType, material);
-
-        if (material.RealKey.ItemType == 12)
-            return true;
-
         try
         {
             var makeItemTypeId = (short)GetIntField(Traverse.Create(page), "_makeItemTypeId", -1);
@@ -828,7 +951,10 @@ internal static partial class ContinuousMakeExecutionController
                     out _,
                     cookingSkillBookCount,
                     makeItemSubTypeId,
-                    buildingAttainmentEffect);
+                    buildingAttainmentEffect,
+                    MakeGameApi.GetIsPerfect(page),
+                    isManual,
+                    -1);
             }
 
             var range = GameData.Domains.Building.SharedMethods.GetMakeResultGradeRange(resultGrade, target.RealKey.ItemType);
@@ -862,7 +988,7 @@ internal static partial class ContinuousMakeExecutionController
     private static bool TryGetMaterialConfigGrade(ItemDisplayData material, out sbyte grade)
     {
         grade = -1;
-        if (material == null)
+        if (material == null || material.RealKey.ItemType != 5)
             return false;
 
         try
@@ -890,16 +1016,198 @@ internal static partial class ContinuousMakeExecutionController
         return 9 - Mathf.Clamp(rawGrade, 0, 8);
     }
 
+    /// <summary>
+    /// One line describing the state that decides whether a batch may continue on the
+    /// combined food target: the resolved category, the submitted subtype, and how many
+    /// listed catalysts can cook their own dish.
+    /// </summary>
+    private static void LogCombinedFoodGate(MakeSubPageMake page, ItemDisplayData firstMaterial)
+    {
+        try
+        {
+            var traverse = Traverse.Create(page);
+            var targetSlot = traverse.Field("targetSlot").GetValue<MakeTargetSlot>();
+            var target = targetSlot?.ItemData;
+            if (!MakeSubPageMakeHelper.CheckIsRandomMake(target)
+                || !MakeFoodTargetSupport.IsCombinedFoodTarget(target.RealKey.TemplateId))
+                return;
+
+            var randomMakeSubType = (short)GetIntField(traverse, "_currentSelectRandomMakeItemSubType", -1);
+            var makeItemTypeId = (short)GetIntField(traverse, "_makeItemTypeId", -1);
+            var subType = (short)GetIntField(traverse, "_makeItemSubTypeId", -1);
+            var isManual = GetBoolField(traverse, "_isManual");
+            var subResult = Config.MakeItemSubType.Instance[subType];
+
+            var list = traverse.Field("_allMaterialList").GetValue<List<ItemDisplayData>>();
+            var listed = 0;
+            var cookable = 0;
+            if (list != null)
+            {
+                foreach (var entry in list)
+                {
+                    if (entry == null || entry.Amount <= 0)
+                        continue;
+
+                    listed++;
+                    if (CanMaterialCookCombinedFoodGroup(entry))
+                        cookable++;
+                }
+            }
+
+            Debug.Log("[BetterTaiwuScroll] Combined food gate: target=" + randomMakeSubType
+                + " makeItemType=" + makeItemTypeId
+                + " subType=" + subType
+                + " subResult=" + (subResult == null ? "missing" : subResult.Result.ItemType + "/" + subResult.Result.TemplateId)
+                + " manual=" + isManual
+                + " firstMaterial=" + (firstMaterial == null ? "-" : firstMaterial.RealKey.TemplateId.ToString())
+                + " listedWithAmount=" + listed
+                + " cookable=" + cookable + ".");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[BetterTaiwuScroll] Combined food gate log failed: " + ex.Message);
+        }
+    }
+
     private static void LogNoEligibleMaterial(ViewMake view, string stage)
     {
         if (view == null)
             return;
 
         var settings = ContinuousMakeSettingsStore.GetFor(view);
+        var page = GetActiveMakePage(view);
+        // Count what the list still advertises: if rows remain but none qualifies, the
+        // panel is holding amounts the backend already consumed.
+        var listed = 0;
+        var listedWithAmount = 0;
+        if (page != null)
+        {
+            var list = Traverse.Create(page).Field("_materialList").GetValue<List<ItemDisplayData>>();
+            if (list != null)
+            {
+                listed = list.Count;
+                foreach (var entry in list)
+                {
+                    if (entry != null && entry.Amount > 0)
+                        listedWithAmount++;
+                }
+            }
+        }
+
         Debug.Log("[BetterTaiwuScroll] Batch make stopped at " + stage
             + ": no eligible material for life skill " + view.CurLifeSkillType
             + " in configured grade range " + settings.HighestMaterialGrade
-            + "-" + settings.LowestMaterialGrade + ".");
+            + "-" + settings.LowestMaterialGrade
+            + "; listed materials=" + listed + ", listed with amount>0=" + listedWithAmount + ".");
+        LogGradeRangeMismatch(view, settings);
+        LogMaterialRejectionReasons(view);
+    }
+
+    /// <summary>
+    /// Distinguishes "the list is stale" from "your own grade filter excludes everything
+    /// you own". When the best material on the page is below the configured range, the
+    /// batch legitimately stops while the list keeps showing usable-looking rows, which
+    /// reads as "the button does nothing".
+    /// </summary>
+    private static void LogGradeRangeMismatch(ViewMake view, ContinuousMakeSettings settings)
+    {
+        try
+        {
+            var page = GetActiveMakePage(view);
+            if (page == null)
+                return;
+
+            var list = Traverse.Create(page).Field("_allMaterialList").GetValue<List<ItemDisplayData>>();
+            if (list == null)
+                return;
+
+            var highestRaw = DisplayGradeToRaw(settings.HighestMaterialGrade);
+            var lowestRaw = DisplayGradeToRaw(settings.LowestMaterialGrade);
+            var bestRaw = -1;
+            var bestTemplate = -1;
+            var inRange = 0;
+            var withAmount = 0;
+
+            foreach (var entry in list)
+            {
+                if (entry == null || entry.Amount <= 0)
+                    continue;
+
+                withAmount++;
+                if (!TryGetMaterialConfigGrade(entry, out var rawGrade))
+                    continue;
+
+                if (rawGrade > bestRaw)
+                {
+                    bestRaw = rawGrade;
+                    bestTemplate = entry.RealKey.TemplateId;
+                }
+
+                if (rawGrade <= highestRaw && rawGrade >= lowestRaw)
+                    inRange++;
+            }
+
+            if (withAmount == 0 || inRange > 0 || bestRaw < 0)
+                return;
+
+            Debug.Log("[BetterTaiwuScroll] Grade filter excludes all stocked catalysts: the best catalyst on this page is "
+                + "template " + bestTemplate + " at display grade " + RawGradeToDisplay(bestRaw)
+                + " (raw=" + bestRaw + "), but the settings for life skill " + view.CurLifeSkillType
+                + " allow only display grade " + settings.LowestMaterialGrade + "-" + settings.HighestMaterialGrade
+                + " (raw " + lowestRaw + "-" + highestRaw + "). Widen the batch make grade range to use these "
+                + "materials; " + withAmount + " listed stacks have stock, " + inRange + " are inside the range.");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[BetterTaiwuScroll] Continuous make grade range diagnosis failed: " + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Dumps why each listed catalyst was rejected. A row that is visible but never
+    /// eligible is the signature of a filter that no longer matches the game data.
+    /// </summary>
+    private static void LogMaterialRejectionReasons(ViewMake view)
+    {
+        var page = GetActiveMakePage(view);
+        if (page == null)
+            return;
+
+        var traverse = Traverse.Create(page);
+        var targetSlot = traverse.Field("targetSlot").GetValue<MakeTargetSlot>();
+        var randomMake = MakeSubPageMakeHelper.CheckIsRandomMake(targetSlot?.ItemData);
+        var randomMakeSubType = randomMake
+            ? (short)GetIntField(traverse, "_currentSelectRandomMakeItemSubType", -1)
+            : (short)-1;
+        var settings = ContinuousMakeSettingsStore.GetFor(view);
+        var highestRaw = DisplayGradeToRaw(settings.HighestMaterialGrade);
+        var lowestRaw = DisplayGradeToRaw(settings.LowestMaterialGrade);
+
+        var list = traverse.Field("_allMaterialList").GetValue<List<ItemDisplayData>>();
+        if (list == null)
+            return;
+
+        var index = 0;
+        foreach (var material in list)
+        {
+            if (material == null)
+                continue;
+
+            index++;
+            if (index > 12)
+                break;
+            var hasGrade = TryGetMaterialConfigGrade(material, out var rawGrade);
+            var sourceAllowed = IsMaterialSourceAllowed(page, material);
+            var compatible = IsMaterialCompatibleWithTarget(page, material, randomMake, randomMakeSubType);
+            Debug.Log("[BetterTaiwuScroll]   material[" + index + "] template=" + material.RealKey.TemplateId
+                + " amount=" + material.Amount
+                + " grade=" + (hasGrade ? RawGradeToDisplay(rawGrade).ToString() : "n/a")
+                + "(raw=" + (hasGrade ? rawGrade.ToString() : "n/a") + ")"
+                + " source=" + material.ItemSourceTypeEnum
+                + " sourceAllowed=" + sourceAllowed
+                + " compatible=" + compatible
+                + " allowedRawRange=" + lowestRaw + "-" + highestRaw + ".");
+        }
     }
 
     private static void SelectMaterial(MakeSubPageMake page, ItemDisplayData material)
@@ -936,6 +1244,10 @@ internal static partial class ContinuousMakeExecutionController
         if (material != null)
         {
             material.Amount = Math.Max(0, material.Amount - makeCount);
+            // The slots and the two material lists can each hold a different
+            // ItemDisplayData instance for the same stack; sync them so the visible list
+            // cannot keep advertising an amount that was already consumed.
+            SyncConsumedMaterialAmount(page, material, material.Amount);
             materialDepleted = material.Amount <= 0;
         }
 
@@ -1023,7 +1335,7 @@ internal static partial class ContinuousMakeExecutionController
             if (materialSlot != null
                 && materialSlot.IsValid
                 && selectedMaterial != null
-                && (selectedMaterial.Amount <= 0 || !HasVisibleAvailableSelectedMaterial(page, selectedMaterial)))
+                && (selectedMaterial.Amount <= 0 || !HasAvailableSelectedMaterial(page, selectedMaterial)))
             {
                 materialSlot.Cancel();
                 return true;
@@ -1037,9 +1349,10 @@ internal static partial class ContinuousMakeExecutionController
         return false;
     }
 
-    private static bool HasVisibleAvailableSelectedMaterial(MakeSubPageMake page, ItemDisplayData selectedMaterial)
+    private static bool HasAvailableSelectedMaterial(MakeSubPageMake page, ItemDisplayData selectedMaterial)
     {
-        var materialList = Traverse.Create(page).Field("_materialList").GetValue() as IEnumerable;
+        // Batches can use other enabled sources while the visible list shows one source.
+        var materialList = Traverse.Create(page).Field("_allMaterialList").GetValue() as IEnumerable;
         if (materialList == null)
             return false;
 
@@ -1192,6 +1505,8 @@ internal static partial class ContinuousMakeExecutionController
         var isManual = GetBoolField(traverse, "_isManual") && subTypes.Count > 1;
         var subType = (short)(isManual ? GetIntField(traverse, "_makeItemSubTypeId", -1) : -1);
         var isPerfect = traverse.Property("IsPerfect").GetValue<bool>();
+        var recipe = new MakeRecipeSnapshot(page);
+        var itemType = Config.MakeItemSubType.Instance[subTypes[0]].Result.ItemType;
         var done = false;
         var result = default(MakeResult);
         // Fetch only the selected recipe. CurMakeResult can still contain the
@@ -1225,14 +1540,14 @@ internal static partial class ContinuousMakeExecutionController
 
         for (var i = 0; i < 120; i++)
         {
-            if (!ShouldContinue(page) || !IsSelectedMaterial(page, material)
+            if (!ShouldContinue(page) || !recipe.IsCurrent() || !IsSelectedMaterial(page, material)
                 || !toolSlot.IsValid || !toolSlot.ItemData.Key.Equals(toolKey)
                 || !targetSlot.IsValid || !targetSlot.ItemData.RealKey.Equals(targetKey))
                 yield break;
 
             if (done)
             {
-                setResult(IsValidRandomMakeResult(result), result);
+                setResult(MakeResultValidation.IsUsable(result, itemType, subTypes, subType), result);
                 yield break;
             }
 
@@ -1255,15 +1570,6 @@ internal static partial class ContinuousMakeExecutionController
             && selected.Amount > 0
             && selected.RealKey.Equals(material.RealKey)
             && selected.ItemSourceTypeEnum == material.ItemSourceTypeEnum;
-    }
-
-    private static bool IsValidRandomMakeResult(GameData.Domains.Building.MakeResult makeResult)
-    {
-        var stage = makeResult.TargetResultStage;
-        if (!stage.IsInit)
-            return false;
-
-        return stage.TemplateId >= 0 || (stage.TemplateIdList != null && stage.TemplateIdList.Count > 0);
     }
 
     private static bool IsConfirmInteractable(MakeSubPageMake page)

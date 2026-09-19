@@ -41,6 +41,7 @@ internal static partial class ContinuousMakeExecutionController
         }
 
         var selectedTool = Traverse.Create(page).Field("toolSlot").GetValue<MakeTargetSlot>()?.ItemData;
+        var recipe = new MakeRecipeSnapshot(page);
         var checkDone = false;
         var canMake = false;
         try
@@ -74,12 +75,13 @@ internal static partial class ContinuousMakeExecutionController
         if (!checkDone || !canMake)
         {
             Debug.LogWarning("[BetterTaiwuScroll] Continuous make stopped: native CheckMakeCondition returned "
-                + (checkDone ? "false" : "no response") + ".");
+                + (checkDone ? "false" : "no response") + " for material "
+                + selectedMaterial.RealKey.TemplateId + ".");
             UIElement.FullScreenMask.Hide();
             yield break;
         }
 
-        if (!ShouldContinue(page))
+        if (!ShouldContinue(page) || !recipe.IsCurrent(includeSubmissionOptions: true))
             yield break;
 
         try
@@ -166,10 +168,22 @@ internal static partial class ContinuousMakeExecutionController
         if (makeItemTypeId < 0 || makeItemSubTypeId < 0)
             return false;
 
+        var makeItemType = Config.MakeItemType.Instance[makeItemTypeId];
+        var makeItemSubTypeItem = Config.MakeItemSubType.Instance[makeItemSubTypeId];
+        var materialConfig = Config.Material.Instance[materialSlot.ItemData.RealKey.TemplateId];
+        if (makeItemType?.MakeItemSubTypes == null || !makeItemType.MakeItemSubTypes.Contains(makeItemSubTypeId)
+            || makeItemSubTypeItem == null || materialConfig?.CraftableItemTypes == null
+            || !materialConfig.CraftableItemTypes.Contains(makeItemTypeId))
+            return false;
+
         var resourceCount = traverse.Field("_curMakeResourceCountInts").GetValue<GameData.Domains.Character.ResourceInts>();
         var needResource = traverse.Field("_makeRequiredResourceInts").GetValue<GameData.Domains.Character.ResourceInts>();
         var isManual = GetBoolField(traverse, "_isManual");
         var isPerfect = MakeGameApi.GetIsPerfect(page);
+        var randomMake = MakeSubPageMakeHelper.CheckIsRandomMake(targetSlot.ItemData);
+        if (randomMake && !MakeResultValidation.IsUsable(currentMakeResult, makeItemSubTypeItem.Result.ItemType,
+            makeItemType.MakeItemSubTypes, isManual && makeItemType.MakeItemSubTypes.Count > 1 ? makeItemSubTypeId : (short)-1))
+            return false;
         var manualFoodTemplateId = (short)(isManual
             && targetSlot.ItemData.RealKey.ItemType == 7
             ? targetSlot.ItemData.RealKey.TemplateId
@@ -193,7 +207,6 @@ internal static partial class ContinuousMakeExecutionController
             ManulFoodTemplateId = manualFoodTemplateId
         };
 
-        var makeItemSubTypeItem = Config.MakeItemSubType.Instance[makeItemSubTypeId];
         var start = new StartMakeArguments
         {
             CharId = view.TaiwuCharId,
@@ -224,9 +237,9 @@ internal static partial class ContinuousMakeExecutionController
             return result;
         }
 
-        if (!IsValidRandomMakeResult(makeResult))
-            return null;
         var stage = makeResult.TargetResultStage;
+        if (!stage.IsInit || !stage.LifeSkillIsMeet)
+            return null;
         for (var i = 0; i < makeCount; i++)
         {
             if (stage.TemplateId >= 0)

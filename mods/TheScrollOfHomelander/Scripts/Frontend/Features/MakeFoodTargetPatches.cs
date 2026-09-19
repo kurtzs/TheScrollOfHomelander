@@ -16,6 +16,46 @@ internal static class MakeFoodTargetSupport
 {
     internal const short CombinedFoodTargetSubType = 799;
 
+    internal const short MeatFoodGroup = 701;
+    internal const short VegetableFoodGroup = 700;
+
+    internal static bool IsFoodGroupSubType(short itemSubType)
+    {
+        return itemSubType == MeatFoodGroup || itemSubType == VegetableFoodGroup;
+    }
+
+    internal static bool CanMakeCombinedFood(ItemDisplayData material)
+    {
+        if (material == null || material.RealKey.ItemType != 5)
+            return false;
+
+        var config = Config.Material.Instance[material.RealKey.TemplateId];
+        if (config?.CraftableItemTypes == null || config.RequiredLifeSkillType != 14)
+            return false;
+
+        foreach (var typeId in config.CraftableItemTypes)
+        {
+            if (IsFoodMakeType(MakeItemType.Instance[typeId]))
+                return true;
+        }
+
+        return false;
+    }
+
+    internal static bool IsFoodMakeType(MakeItemTypeItem type)
+    {
+        if (type == null || !IsFoodGroupSubType(type.ItemSubType)
+            || type.MakeItemSubTypes == null || type.MakeItemSubTypes.Count == 0)
+            return false;
+
+        foreach (var subType in type.MakeItemSubTypes)
+        {
+            if (MakeItemSubType.Instance[subType]?.Result.ItemType != 7)
+                return false;
+        }
+        return true;
+    }
+
     private const string LargeIconFileName = "combined_food.png";
     private const string SmallIconFileName = "combined_food_small.png";
 
@@ -32,7 +72,7 @@ internal static class MakeFoodTargetSupport
 
     internal static bool IsFoodRandomSubType(short itemSubType)
     {
-        return itemSubType == 700 || itemSubType == 701;
+        return IsFoodGroupSubType(itemSubType);
     }
 
     internal static void InstallCombinedTarget(MakeSubPageMake page)
@@ -301,7 +341,8 @@ internal static class MakeSubPageMakeInitFoodTargetPatch
 {
     private static void Postfix(MakeSubPageMake __instance, ViewMake parentView)
     {
-        if (__instance == null || parentView == null || parentView.CurLifeSkillType != 14)
+        if (__instance == null || parentView == null || parentView.CurLifeSkillType != 14
+            || !Plugin.IsEnabledForLifeSkill(parentView.CurLifeSkillType))
             return;
 
         MakeFoodTargetSupport.InstallCombinedTarget(__instance);
@@ -430,20 +471,7 @@ internal static class MakeSubPageMakeHelperFoodTargetMaterialPatch
         if (!MakeFoodTargetSupport.IsCombinedFoodTarget(itemSubType))
             return true;
 
-        __result = false;
-        if (materialData == null)
-            return false;
-
-        var craftableItemTypes = Config.Material.Instance[materialData.RealKey.TemplateId].CraftableItemTypes;
-        foreach (var makeItemTypeId in craftableItemTypes)
-        {
-            if (!MakeFoodTargetSupport.IsFoodRandomSubType(MakeItemType.Instance[makeItemTypeId].ItemSubType))
-                continue;
-
-            __result = true;
-            break;
-        }
-
+        __result = MakeFoodTargetSupport.CanMakeCombinedFood(materialData);
         return false;
     }
 }
@@ -451,6 +479,12 @@ internal static class MakeSubPageMakeHelperFoodTargetMaterialPatch
 [HarmonyPatch(typeof(MakeSubPageMake), "RefreshMakeType")]
 internal static class MakeSubPageMakeRefreshFoodTargetMakeTypePatch
 {
+    /// <summary>
+    /// The combined 荤素 target spans both food groups (701 荤 / 700 素), so it resolves the
+    /// make item type from the catalyst itself: keep the type already selected when this
+    /// catalyst can cook it, otherwise take the first food group type it supports. Publishing
+    /// the resolved type and its subtype list is what makes the craft produce the right dish.
+    /// </summary>
     private static bool Prefix(MakeSubPageMake __instance)
     {
         if (__instance == null)
@@ -467,65 +501,68 @@ internal static class MakeSubPageMakeRefreshFoodTargetMakeTypePatch
             return true;
 
         var materialItem = Config.Material.Instance[materialSlot.ItemData.RealKey.TemplateId];
+
         var makeTypeList = traverse.Field("_makeTypeList").GetValue<List<short>>();
         var makeTypeDict = traverse.Field("_makeTypeDict").GetValue<Dictionary<short, List<short>>>();
         makeTypeList?.Clear();
         makeTypeDict?.Clear();
 
+        // Resolve only through the installed config relationships. Template IDs in
+        // Material, MakeItemType and MakeItemSubType are separate namespaces.
+        var previousMakeItemTypeId = traverse.Field("_makeItemTypeId").GetValue<short>();
         short selectedMakeItemTypeId = -1;
-        foreach (var makeItemTypeId in materialItem.CraftableItemTypes)
+        if (materialItem?.CraftableItemTypes != null)
         {
-            var makeItemTypeItem = MakeItemType.Instance[makeItemTypeId];
-            makeTypeList?.Add(makeItemTypeId);
-            if (makeTypeDict != null)
-                makeTypeDict[makeItemTypeId] = makeItemTypeItem.MakeItemSubTypes;
-
-            if (selectedMakeItemTypeId < 0
-                && MakeFoodTargetSupport.IsFoodRandomSubType(makeItemTypeItem.ItemSubType))
+            foreach (var makeItemTypeId in materialItem.CraftableItemTypes)
             {
-                selectedMakeItemTypeId = makeItemTypeId;
+                var type = MakeItemType.Instance[makeItemTypeId];
+                if (!MakeFoodTargetSupport.IsFoodMakeType(type))
+                    continue;
+
+                makeTypeList?.Add(makeItemTypeId);
+                if (makeTypeDict != null)
+                    makeTypeDict[makeItemTypeId] = type.MakeItemSubTypes;
+                if (selectedMakeItemTypeId < 0 || makeItemTypeId == previousMakeItemTypeId)
+                    selectedMakeItemTypeId = makeItemTypeId;
             }
         }
 
         if (selectedMakeItemTypeId < 0)
         {
-            Debug.LogWarning(
-                "[BetterTaiwuScroll] Combined food target found no matching make item type for material: "
-                + materialItem.TemplateId);
             materialSlot.Cancel();
             return false;
         }
 
-        var subTypes = MakeItemType.Instance[selectedMakeItemTypeId].MakeItemSubTypes;
-        if (subTypes == null || subTypes.Count == 0)
-        {
-            Debug.LogWarning(
-                "[BetterTaiwuScroll] Combined food target found an empty subtype list for make item type: "
-                + selectedMakeItemTypeId);
-            materialSlot.Cancel();
-            return false;
-        }
-
-        var previousMakeItemTypeId = traverse.Field("_makeItemTypeId").GetValue<short>();
+        var selectedSubTypes = MakeItemType.Instance[selectedMakeItemTypeId].MakeItemSubTypes;
         var previousSubType = traverse.Field("_makeItemSubTypeId").GetValue<short>();
-        var isManual = traverse.Field("_isManual").GetValue<bool>();
-        var subTypeToggleGroup = traverse.Field("subTypeToggleGroup").GetValue<CToggleGroup>();
-        var activeIndex = subTypeToggleGroup == null ? -1 : subTypeToggleGroup.GetActiveIndex();
-        var typeChanged = previousMakeItemTypeId != selectedMakeItemTypeId;
         var selectedSubType = previousSubType;
-        if (typeChanged || !subTypes.Contains(selectedSubType))
+        if (previousMakeItemTypeId != selectedMakeItemTypeId || !selectedSubTypes.Contains(selectedSubType))
         {
-            if (isManual && activeIndex >= 0 && activeIndex < subTypes.Count)
-                selectedSubType = subTypes[activeIndex];
-            else
-                selectedSubType = subTypes[UnityEngine.Random.Range(0, subTypes.Count)];
+            var group = traverse.Field("subTypeToggleGroup").GetValue<CToggleGroup>();
+            var index = group == null ? -1 : group.GetActiveIndex();
+            selectedSubType = traverse.Field("_isManual").GetValue<bool>() && index >= 0 && index < selectedSubTypes.Count
+                ? selectedSubTypes[index]
+                : selectedSubTypes[UnityEngine.Random.Range(0, selectedSubTypes.Count)];
         }
 
         traverse.Field("_makeItemTypeId").SetValue(selectedMakeItemTypeId);
-        traverse.Field("_makeItemSubtypeIdList").SetValue(subTypes);
+        traverse.Field("_makeItemSubtypeIdList").SetValue(selectedSubTypes);
         traverse.Field("_makeItemSubTypeId").SetValue(selectedSubType);
-        if (typeChanged || selectedSubType != previousSubType)
+        if (previousMakeItemTypeId != selectedMakeItemTypeId || previousSubType != selectedSubType)
             targetSlot.Refresh();
+
         return false;
+    }
+}
+
+[HarmonyPatch(typeof(MakeSubPageMake), "SelectTarget")]
+internal static class MakeSubPageMakeSelectTargetFoodGroupPatch
+{
+    private static void Prefix(MakeSubPageMake __instance, ItemDisplayData itemData)
+    {
+        // SelectTarget refreshes materials before assigning this field. Publish
+        // the new category first, including when switching back to 荤 or 素.
+        if (__instance != null && MakeSubPageMakeHelper.CheckIsRandomMake(itemData))
+            Traverse.Create(__instance).Field("_currentSelectRandomMakeItemSubType").SetValue(itemData.Key.TemplateId);
     }
 }

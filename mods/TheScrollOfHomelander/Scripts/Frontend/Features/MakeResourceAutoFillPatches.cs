@@ -23,7 +23,8 @@ internal static class MakeResourceAutoFillController
             return;
 
         var view = MakeSelectMaterialPatch.GetParentView(page);
-        if (view == null || Array.IndexOf(AutoFillLifeSkillTypes, view.CurLifeSkillType) < 0)
+        if (view == null || !Plugin.IsEnabledForLifeSkill(view.CurLifeSkillType)
+            || Array.IndexOf(AutoFillLifeSkillTypes, view.CurLifeSkillType) < 0)
             return;
 
         try

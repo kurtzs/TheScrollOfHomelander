@@ -113,6 +113,19 @@ internal static class ContinuousMakeMaterialListScrollApplySortAndFilterPatch
     }
 }
 
+[HarmonyPatch(typeof(MakeSubPageMake), "OnGetMakeResult")]
+internal static class ContinuousMakeGetMakeResultCleanupPatch
+{
+    [HarmonyPriority(Priority.Last)]
+    private static void Postfix(MakeSubPageMake __instance)
+    {
+        ContinuousMakeExecutionController.ReconcileMaterialListAfterMakeResult(__instance);
+        MakePreviewRequest.RefreshConfirmState(__instance);
+        ContinuousMakeExecutionController.RefreshConfirmButtonState(__instance);
+        ContinuousMakeUiController.RefreshBatchMakeButtonState(__instance);
+    }
+}
+
 [HarmonyPatch(typeof(UIElement), "SetOnInitArgs")]
 internal static class ContinuousMakeGetItemArgsPatch
 {
@@ -130,4 +143,3 @@ internal static class ContinuousMakeGetItemMaskPatch
         return !ContinuousMakeExecutionController.ShouldSuppressGetItemMask(elem);
     }
 }
-

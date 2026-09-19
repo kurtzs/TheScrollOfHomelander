@@ -14,8 +14,10 @@ internal static class MakeConfirmPatch
 {
     internal static readonly HashSet<MakeSubPageMake> WaitingPages = new();
 
-    private static void Postfix(MakeSubPageMake __instance)
+    private static void Postfix(MakeSubPageMake __instance, bool __runOriginal)
     {
+        if (!__runOriginal)
+            return;
         var view = MakeSelectMaterialPatch.GetParentView(__instance);
         if (__instance == null || view == null)
             return;
@@ -31,7 +33,7 @@ internal static class MakeConfirmPatch
     }
 }
 
-[HarmonyPatch(typeof(MakeSubPageMake), "RefreshPanel")]
+[HarmonyPatch(typeof(MakeSubPageMake), "Refresh", new[] { typeof(GameData.Domains.Building.BuildingMakeDisplayData) })]
 internal static class MakeRefreshPanelPatch
 {
     private static void Postfix(MakeSubPageMake __instance)
@@ -40,7 +42,8 @@ internal static class MakeRefreshPanelPatch
             return;
 
         var view = MakeSelectMaterialPatch.GetParentView(__instance);
-        if (view == null || !Plugin.IsEnabledForLifeSkill(view.CurLifeSkillType))
+        if (view == null || !Plugin.IsEnabledForLifeSkill(view.CurLifeSkillType)
+            || !Plugin.IsAutoSelectMaterialEnabledForLifeSkill(view.CurLifeSkillType))
             return;
 
         __instance.StartCoroutine(SelectFirstMaterialAfterRefresh(__instance));
@@ -48,10 +51,14 @@ internal static class MakeRefreshPanelPatch
 
     private static IEnumerator SelectFirstMaterialAfterRefresh(MakeSubPageMake page)
     {
+        var current = MakeExecutionLifetime.Capture(page);
         yield return null;
+        if (!current())
+            yield break;
 
         var view = MakeSelectMaterialPatch.GetParentView(page);
-        if (page == null || view == null || !Plugin.IsEnabledForLifeSkill(view.CurLifeSkillType))
+        if (page == null || view == null || !Plugin.IsEnabledForLifeSkill(view.CurLifeSkillType)
+            || !Plugin.IsAutoSelectMaterialEnabledForLifeSkill(view.CurLifeSkillType))
             yield break;
 
         var firstMaterial = GetFirstAvailableMaterial(page);
@@ -64,6 +71,8 @@ internal static class MakeRefreshPanelPatch
         nativeOptions.Restore(page);
 
         yield return null;
+        if (!current())
+            yield break;
         if (Plugin.EnableMaxProductCount)
             MakeSelectMaterialPatch.SetMakeCountToMax(page);
     }
@@ -93,6 +102,9 @@ internal static class MakeRefreshPanelPatch
 
     private static bool ClickMaterialListItem(MakeSubPageMake page, ItemDisplayData material)
     {
+        // Clicking the selected row toggles it off in the current game.
+        if (ReferenceEquals(Traverse.Create(page).Field("materialSlot").GetValue<MakeTargetSlot>()?.ItemData, material))
+            return true;
         var materialListScroll = Traverse.Create(page).Field("materialListScroll").GetValue();
         if (materialListScroll == null)
             return false;
@@ -170,7 +182,10 @@ internal static class MakeSelectMaterialPatch
 
     private static IEnumerator ApplyAfterUiRefresh(MakeSubPageMake page)
     {
+        var current = MakeExecutionLifetime.Capture(page);
         yield return null;
+        if (!current())
+            yield break;
 
         var view = GetParentView(page);
         if (page == null || view == null || !Plugin.IsEnabledForLifeSkill(view.CurLifeSkillType))
@@ -185,6 +200,8 @@ internal static class MakeSelectMaterialPatch
         }
 
         yield return null;
+        if (!current())
+            yield break;
 
         if (Plugin.EnableMaxProductCount)
             SetMakeCountToMax(page);
@@ -339,7 +356,7 @@ internal static class ViewMakeAutoSelectToolPatch
     private static void Prefix(ViewMake __instance)
     {
         CurrentView = __instance;
-        if (__instance == null || !Plugin.EnableBestTool)
+        if (__instance == null || !Plugin.EnableBestTool || !Plugin.IsEnabledForLifeSkill(__instance.CurLifeSkillType))
             return;
 
         try
@@ -406,7 +423,7 @@ internal static class ViewMakeGetAutoSelectToolPatch
                 bestTool = tool;
         }
 
-        return bestTool;
+        return bestTool ?? (settings.AllowBareHand && TryGetAvailableBareHandTool(view, out var fallback) ? fallback : null);
     }
 
     private static ItemDisplayData GetContinuousMakeTool(ViewMake view, IEnumerable toolList)

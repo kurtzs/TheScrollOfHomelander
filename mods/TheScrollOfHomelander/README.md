@@ -47,6 +47,8 @@ snapshot; at most three attempts run until a new edit or explicit flush.
 
 ## Manual Acceptance
 
+For the food/result-preview fix, see [crafting regression checks and acceptance](Checks/CraftingResults/README.md).
+
 Verify recruitment/refusal without an open building area, across settlements, and
 after rapid closing/reopening. Verify all batch speeds, tool priority, perfect
 affixes, depleted materials and durability protection. Verify search failure/retry,
