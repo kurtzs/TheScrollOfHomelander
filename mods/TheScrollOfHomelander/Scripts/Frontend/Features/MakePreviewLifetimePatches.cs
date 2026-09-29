@@ -133,9 +133,16 @@ internal sealed class MakePreviewRequest
     internal static void RefreshConfirmState(MakeSubPageMake page)
     {
         var view = MakeSelectMaterialPatch.GetParentView(page);
-        if (view != null && Plugin.IsEnabledForLifeSkill(view.CurLifeSkillType)
-            && ContinuousMakeExecutionController.IsBatchActive(view))
+        var batchActive = view != null
+            && Plugin.IsEnabledForLifeSkill(view.CurLifeSkillType)
+            && ContinuousMakeExecutionController.IsBatchActive(view);
+
+        // Outside a batch the game owns this button, including its interactable state and its
+        // tooltip. Disabling it while the preview was stale is what made normal crafting look
+        // dead, so only the batch path is allowed to manage it here.
+        if (!batchActive)
             return;
+
         var submitting = MakeSubmissionRequest.IsPending(page);
         if (!submitting && CanSubmit(page))
             return;
@@ -167,16 +174,40 @@ internal static class MakePreviewConfirmReadyPatch
 {
     [ThreadStatic] internal static MakeSubmissionRequest CurrentSubmission;
 
-    [HarmonyPriority(Priority.First)]
+    // One step after the batch handler so the batch's stop click is handled first.
+    [HarmonyPriority(Priority.First - 1)]
     private static bool Prefix(MakeSubPageMake __instance, out MakeSubmissionRequest __state)
     {
         __state = CurrentSubmission;
+        if (__instance == null)
+            return true;
+
+        // Re-entrancy while our own submission round-trip is in flight must stay blocked,
+        // otherwise the same click would be submitted twice.
         if (MakeSubmissionRequest.IsPending(__instance))
             return false;
+
         var view = MakeSelectMaterialPatch.GetParentView(__instance);
-        if (view != null && Plugin.IsEnabledForLifeSkill(view.CurLifeSkillType)
-            && ContinuousMakeExecutionController.IsBatchActive(view))
+        var batchActive = view != null
+            && Plugin.IsEnabledForLifeSkill(view.CurLifeSkillType)
+            && ContinuousMakeExecutionController.IsBatchActive(view);
+
+        // Normal crafting belongs to the game: never swallow the click. At worst the game
+        // answers with its own current result, which is exactly the vanilla behaviour.
+        if (!batchActive)
+        {
+            if (MakePreviewRequest.CanSubmit(__instance))
+            {
+                CurrentSubmission = new MakeSubmissionRequest(__instance);
+                return true;
+            }
+
+            // A batch crafts round after round from the preview, so there the freshness guard
+            // still matters: refresh and let the player retry instead of consuming a stale one.
+            MakePageDeferredActionQueue.RequestCheckCondition(__instance);
             return true;
+        }
+
         if (MakePreviewRequest.CanSubmit(__instance))
         {
             CurrentSubmission = new MakeSubmissionRequest(__instance);
@@ -184,7 +215,6 @@ internal static class MakePreviewConfirmReadyPatch
         }
 
         MakePageDeferredActionQueue.RequestCheckCondition(__instance);
-        Debug.LogWarning("[BetterTaiwuScroll] Make preview is not ready for the current recipe; refreshing before submission.");
         return false;
     }
 

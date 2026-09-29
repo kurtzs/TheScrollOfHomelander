@@ -38,13 +38,17 @@ Use this for any new feature or behaviour change in this Mod. Skip a step only i
 
 ## 6. Build
 
+Windows PowerShell example. On Linux, first validate the installation and use the direct workers in [taiwu-linux-development](../../taiwu-linux-development/SKILL.md); a worker smoke test alone does not validate the game API or compile this Mod.
+
 ```powershell
 .\mods\TheScrollOfHomelander\Build-Deploy.ps1
 ```
 
-Both sides must report zero errors. Read `build-records\<Side>.json` when a warning needs the exact file/line. Fix real errors; do not silence them with `#pragma warning disable` without a reason.
+Both sides must report zero errors. Read `build-records\<Side>.json` from the Windows pipeline, or the direct worker's JSON output on Linux, when a warning needs the exact file/line. Fix real errors; do not silence them with `#pragma warning disable` without a reason.
 
 ## 7. Deploy And Hand Over
+
+Windows-only pipeline; changing `-GameRoot` does not make `Build-Deploy.ps1` portable. No full Linux release/deploy pipeline exists yet; follow the linked skill's safeguards and report any unperformed release/deployment checks explicitly.
 
 ```powershell
 .\mods\TheScrollOfHomelander\Build-Deploy.ps1 -Deploy

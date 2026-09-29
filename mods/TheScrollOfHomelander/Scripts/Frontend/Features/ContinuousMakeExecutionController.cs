@@ -27,6 +27,8 @@ internal static partial class ContinuousMakeExecutionController
     private static readonly HashSet<MakeSubPageMake> PendingMaterialSlotCleanupPages = new();
     private static readonly HashSet<Game.Components.ListStyleGeneralScroll.Item.ItemListScroll> MaterialListScrolls = new();
     private static readonly Dictionary<ViewMake, ResultCollector> ResultCollectors = new();
+    // The game's own label for the confirm button, captured before the batch relabels it.
+    private static readonly Dictionary<MakeSubPageMake, string> _confirmLabelByPage = new();
 
     private static ViewMake _activeResultView;
     private static bool _suppressNextGetItemMask;
@@ -49,6 +51,7 @@ internal static partial class ContinuousMakeExecutionController
         PendingMaterialSlotCleanupPages.Clear();
         MaterialListScrolls.Clear();
         ResultCollectors.Clear();
+        _confirmLabelByPage.Clear();
         _activeResultView = null;
         _suppressNextGetItemMask = false;
         _showingMergedGetItem = false;
@@ -62,6 +65,7 @@ internal static partial class ContinuousMakeExecutionController
         var view = MakeSelectMaterialPatch.GetParentView(page);
         RunningPages.Remove(page);
         PendingMaterialSlotCleanupPages.Remove(page);
+        _confirmLabelByPage.Remove(page);
         MaterialListScrolls.RemoveWhere(scroll => scroll == null || scroll.GetComponentInParent<MakeSubPageMake>(true) == page);
         if (view == null) return;
         PendingPages.Remove(view);
@@ -73,20 +77,28 @@ internal static partial class ContinuousMakeExecutionController
         if (_activeResultView == view) { _activeResultView = null; _suppressNextGetItemMask = false; }
     }
 
+    /// <summary>
+    /// The panel's 制作 button always keeps the game's own behaviour. Only a batch that is
+    /// actually running takes the click over (and that click then means "stop"). Enabling
+    /// continuous mode or the batch button never disables normal crafting, so batch settings
+    /// cannot affect 制作.
+    /// </summary>
     internal static bool HandleConfirmClick(MakeSubPageMake page)
     {
+        if (page == null)
+            return true;
+
         if (TryStopByConfirmClick(page))
             return false;
 
         var view = MakeSelectMaterialPatch.GetParentView(page);
-        if (view == null || !Plugin.IsEnabledForLifeSkill(view.CurLifeSkillType)
-            || !ContinuousMakeUiController.IsContinuousMakeEnabledFor(view))
+        if (view == null || !RunningPages.Contains(page))
             return true;
 
-        // Continuous mode owns the complete first make. Do not let the native
-        // method consume the currently selected (possibly out-of-range)
-        // material before the configured material filter has run.
-        TryStartConfiguredBatch(page);
+        // A batch is running on this page and owns the round it already started; let the
+        // player stop it with the same button.
+        StopRequestedViews.Add(view);
+        RefreshConfirmButtonState(page);
         return false;
     }
 
@@ -114,7 +126,13 @@ internal static partial class ContinuousMakeExecutionController
         var stopRequested = StopRequestedViews.Contains(view);
 
         if (text != null)
+        {
+            // Remember the game's own label the first time it is replaced, so it can be
+            // handed back verbatim when the batch ends.
+            if (!_confirmLabelByPage.ContainsKey(page))
+                _confirmLabelByPage[page] = text.text;
             text.text = "停止制作";
+        }
         if (button != null)
             button.interactable = !stopRequested;
         if (tip != null)
@@ -741,7 +759,44 @@ internal static partial class ContinuousMakeExecutionController
 
         if (page != null)
         {
+            // The panel's 制作 button was repurposed while the batch ran; hand it back to the
+            // game so a normal click works again.
+            RestoreConfirmButton(page);
             RefreshMakeCondition(page);
+        }
+    }
+
+    /// <summary>
+    /// Restores the confirm button the game owns: while a batch runs the Mod relabels it to
+    /// 停止制作, and leaving it that way is what makes normal crafting look broken afterwards.
+    /// The original label is captured before it is first overwritten, so the restore does not
+    /// depend on reproducing the game's own text format.
+    /// </summary>
+    private static void RestoreConfirmButton(MakeSubPageMake page)
+    {
+        if (page == null)
+            return;
+
+        try
+        {
+            var text = GetConfirmText(page);
+            if (text != null && _confirmLabelByPage.TryGetValue(page, out var label))
+            {
+                text.text = label;
+                _confirmLabelByPage.Remove(page);
+            }
+
+            var tip = GetConfirmTip(page);
+            if (tip != null)
+                tip.enabled = true;
+
+            var button = GetConfirmButton(page);
+            if (button != null)
+                button.interactable = true;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("[BetterTaiwuScroll] Continuous make confirm button restore failed: " + ex.Message);
         }
     }
 
@@ -898,7 +953,13 @@ internal static partial class ContinuousMakeExecutionController
             return false;
 
         if (randomMake)
-            return MakeSubPageMakeHelper.CheckCanMakeTargetRandomType(randomMakeSubType, material);
+        {
+            // The combined 荤素 entry has no vanilla group of its own, so it uses the Mod's
+            // two-group rule; every other random target keeps the game's own comparison.
+            return MakeFoodTargetSupport.IsCombinedFoodTarget(randomMakeSubType)
+                ? CanMaterialCookCombinedFoodGroup(material)
+                : MakeSubPageMakeHelper.CheckCanMakeTargetRandomType(randomMakeSubType, material);
+        }
 
         var targetSlot = Traverse.Create(page).Field("targetSlot").GetValue<MakeTargetSlot>();
         if (targetSlot == null || !targetSlot.IsValid || targetSlot.ItemData == null)

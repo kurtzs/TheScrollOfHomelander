@@ -2,6 +2,8 @@
 
 Search the assembly for the side you are targeting. The same logical type can appear in more than one assembly with different content, so an assembly name is part of the evidence, not a detail.
 
+Paths below use Windows notation. On Linux, validate the actual installation and use host paths through [taiwu-linux-development](../../taiwu-linux-development/SKILL.md); the side boundaries remain unchanged.
+
 ## Frontend: `<gameRoot>\The Scroll of Taiwu_Data\Managed`
 
 | Assembly | Contents |

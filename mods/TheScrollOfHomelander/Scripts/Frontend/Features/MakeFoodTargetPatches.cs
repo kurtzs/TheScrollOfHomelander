@@ -56,6 +56,64 @@ internal static class MakeFoodTargetSupport
         return true;
     }
 
+    /// <summary>
+    /// True while the synthetic 荤素 entry is the selected target. Only then may the Mod
+    /// answer the material filters on behalf of both food groups.
+    /// </summary>
+    internal static bool CombinedTargetActive { get; private set; }
+
+    internal static void SetCombinedTargetActive(bool active)
+    {
+        CombinedTargetActive = active;
+    }
+
+    /// <summary>The food group this catalyst is cooked in (701 荤 / 700 素), or -1.</summary>
+    internal static short ResolveFoodGroupFor(ItemDisplayData material)
+    {
+        if (material == null || material.RealKey.ItemType != 5)
+            return -1;
+
+        var config = Config.Material.Instance[material.RealKey.TemplateId];
+        var craftable = config?.CraftableItemTypes;
+        if (craftable == null)
+            return -1;
+
+        foreach (var typeId in craftable)
+        {
+            var type = MakeItemType.Instance[typeId];
+            if (!IsFoodMakeType(type))
+                continue;
+
+            return type.ItemSubType;
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// Remembers the group the combined target currently publishes, so the material filters
+    /// can keep admitting the other group's catalysts while it stays selected.
+    /// </summary>
+    internal static void PublishFoodGroup(MakeSubPageMake page, short foodGroup)
+    {
+        if (!IsFoodGroupSubType(foodGroup))
+            return;
+
+        CombinedFoodGroup = foodGroup;
+        if (page != null)
+            _groupByPage[page] = foodGroup;
+    }
+
+    internal static short CombinedFoodGroup { get; private set; } = MeatFoodGroup;
+
+    internal static void ForgetPage(MakeSubPageMake page)
+    {
+        if (page != null)
+            _groupByPage.Remove(page);
+    }
+
+    private static readonly Dictionary<MakeSubPageMake, short> _groupByPage = new();
+
     private const string LargeIconFileName = "combined_food.png";
     private const string SmallIconFileName = "combined_food_small.png";
 
@@ -468,7 +526,17 @@ internal static class MakeSubPageMakeHelperFoodTargetMaterialPatch
 {
     private static bool Prefix(short itemSubType, ItemDisplayData materialData, ref bool __result)
     {
-        if (!MakeFoodTargetSupport.IsCombinedFoodTarget(itemSubType))
+        // Vanilla groups need no help unless the combined 荤素 target is the active target:
+        // the panel publishes one concrete group while the player may click a catalyst of the
+        // other group, which vanilla would reject as 类型不符.
+        if (MakeFoodTargetSupport.IsCombinedFoodTarget(itemSubType))
+        {
+            __result = MakeFoodTargetSupport.CanMakeCombinedFood(materialData);
+            return false;
+        }
+
+        if (!MakeFoodTargetSupport.IsFoodGroupSubType(itemSubType)
+            || !MakeFoodTargetSupport.CombinedTargetActive)
             return true;
 
         __result = MakeFoodTargetSupport.CanMakeCombinedFood(materialData);
@@ -480,10 +548,11 @@ internal static class MakeSubPageMakeHelperFoodTargetMaterialPatch
 internal static class MakeSubPageMakeRefreshFoodTargetMakeTypePatch
 {
     /// <summary>
-    /// The combined 荤素 target spans both food groups (701 荤 / 700 素), so it resolves the
-    /// make item type from the catalyst itself: keep the type already selected when this
-    /// catalyst can cook it, otherwise take the first food group type it supports. Publishing
-    /// the resolved type and its subtype list is what makes the craft produce the right dish.
+    /// The combined 荤素 target only needs one thing vanilla cannot do: while it is selected,
+    /// publish the food group the current catalyst actually belongs to (701 荤 / 700 素), so
+    /// vanilla's own algorithm finds the make item type and builds the subtype list from it.
+    /// The Mod deliberately does not pick the subtype: the game decides it, and the craft
+    /// result follows the submitted subtype that vanilla leaves in place.
     /// </summary>
     private static bool Prefix(MakeSubPageMake __instance)
     {
@@ -500,58 +569,21 @@ internal static class MakeSubPageMakeRefreshFoodTargetMakeTypePatch
             || !materialSlot.IsValid)
             return true;
 
-        var materialItem = Config.Material.Instance[materialSlot.ItemData.RealKey.TemplateId];
+        var material = materialSlot.ItemData;
+        if (material == null)
+            return true;
 
-        var makeTypeList = traverse.Field("_makeTypeList").GetValue<List<short>>();
-        var makeTypeDict = traverse.Field("_makeTypeDict").GetValue<Dictionary<short, List<short>>>();
-        makeTypeList?.Clear();
-        makeTypeDict?.Clear();
-
-        // Resolve only through the installed config relationships. Template IDs in
-        // Material, MakeItemType and MakeItemSubType are separate namespaces.
-        var previousMakeItemTypeId = traverse.Field("_makeItemTypeId").GetValue<short>();
-        short selectedMakeItemTypeId = -1;
-        if (materialItem?.CraftableItemTypes != null)
+        // Publish the group this catalyst belongs to before vanilla runs, otherwise vanilla
+        // finds no matching make item type and cancels the catalyst.
+        var group = MakeFoodTargetSupport.ResolveFoodGroupFor(material);
+        if (group >= 0)
         {
-            foreach (var makeItemTypeId in materialItem.CraftableItemTypes)
-            {
-                var type = MakeItemType.Instance[makeItemTypeId];
-                if (!MakeFoodTargetSupport.IsFoodMakeType(type))
-                    continue;
-
-                makeTypeList?.Add(makeItemTypeId);
-                if (makeTypeDict != null)
-                    makeTypeDict[makeItemTypeId] = type.MakeItemSubTypes;
-                if (selectedMakeItemTypeId < 0 || makeItemTypeId == previousMakeItemTypeId)
-                    selectedMakeItemTypeId = makeItemTypeId;
-            }
+            MakeFoodTargetSupport.PublishFoodGroup(__instance, group);
+            traverse.Field("_currentSelectRandomMakeItemSubType").SetValue(group);
         }
 
-        if (selectedMakeItemTypeId < 0)
-        {
-            materialSlot.Cancel();
-            return false;
-        }
-
-        var selectedSubTypes = MakeItemType.Instance[selectedMakeItemTypeId].MakeItemSubTypes;
-        var previousSubType = traverse.Field("_makeItemSubTypeId").GetValue<short>();
-        var selectedSubType = previousSubType;
-        if (previousMakeItemTypeId != selectedMakeItemTypeId || !selectedSubTypes.Contains(selectedSubType))
-        {
-            var group = traverse.Field("subTypeToggleGroup").GetValue<CToggleGroup>();
-            var index = group == null ? -1 : group.GetActiveIndex();
-            selectedSubType = traverse.Field("_isManual").GetValue<bool>() && index >= 0 && index < selectedSubTypes.Count
-                ? selectedSubTypes[index]
-                : selectedSubTypes[UnityEngine.Random.Range(0, selectedSubTypes.Count)];
-        }
-
-        traverse.Field("_makeItemTypeId").SetValue(selectedMakeItemTypeId);
-        traverse.Field("_makeItemSubtypeIdList").SetValue(selectedSubTypes);
-        traverse.Field("_makeItemSubTypeId").SetValue(selectedSubType);
-        if (previousMakeItemTypeId != selectedMakeItemTypeId || previousSubType != selectedSubType)
-            targetSlot.Refresh();
-
-        return false;
+        // Let the game compute the make item type and the subtype list.
+        return true;
     }
 }
 
@@ -560,9 +592,18 @@ internal static class MakeSubPageMakeSelectTargetFoodGroupPatch
 {
     private static void Prefix(MakeSubPageMake __instance, ItemDisplayData itemData)
     {
-        // SelectTarget refreshes materials before assigning this field. Publish
-        // the new category first, including when switching back to 荤 or 素.
-        if (__instance != null && MakeSubPageMakeHelper.CheckIsRandomMake(itemData))
-            Traverse.Create(__instance).Field("_currentSelectRandomMakeItemSubType").SetValue(itemData.Key.TemplateId);
+        // SelectTarget refreshes materials before assigning this field. Publish the new
+        // category first, including when switching back to 荤 or 素.
+        if (__instance == null || !MakeSubPageMakeHelper.CheckIsRandomMake(itemData))
+            return;
+
+        Traverse.Create(__instance).Field("_currentSelectRandomMakeItemSubType").SetValue(itemData.Key.TemplateId);
+
+        // Only the synthetic 荤素 entry makes the Mod answer for both food groups; every
+        // vanilla target keeps the game's own rules untouched.
+        MakeFoodTargetSupport.SetCombinedTargetActive(
+            itemData.Key.TemplateId == MakeFoodTargetSupport.CombinedFoodTargetSubType);
+        if (!MakeFoodTargetSupport.CombinedTargetActive)
+            MakeFoodTargetSupport.ForgetPage(__instance);
     }
 }

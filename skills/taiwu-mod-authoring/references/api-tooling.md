@@ -2,6 +2,8 @@
 
 Use this reference before searching APIs, selecting patch targets, or decompiling game code.
 
+The PowerShell examples below are Windows-specific. On Linux, follow [taiwu-linux-development](../../taiwu-linux-development/SKILL.md) to validate the installation and use `bash tools/run-worker.sh decompiler ...` directly. `query.ps1` is Windows-only as currently implemented, not made portable by changing `-GameRoot` alone.
+
 ## Search The Installed Assemblies
 
 Resolve the game root first, then search by exact type or member name with `TaiwuStudio.DecompilerWorker`. Narrow early:
@@ -38,7 +40,7 @@ Do not load full decompiled types into context. Inspect only the needed type/mem
 
 ## Decompiler Worker
 
-The worker is `tools\TaiwuStudio.DecompilerWorker\bin\Release\net8.0\TaiwuStudio.DecompilerWorker.exe`. It reads the installed DLLs directly — there is no index or cache to build first:
+On Windows, the worker is `tools\TaiwuStudio.DecompilerWorker\bin\Release\net8.0\TaiwuStudio.DecompilerWorker.exe`. It reads the installed DLLs directly; there is no index or cache to build first:
 
 ```powershell
 $worker = "tools\TaiwuStudio.DecompilerWorker\bin\Release\net8.0\TaiwuStudio.DecompilerWorker.exe"

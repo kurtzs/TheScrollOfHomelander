@@ -16,6 +16,9 @@ namespace BetterTaiwuScroll.Frontend;
 [HarmonyPatch(typeof(MakeSubPageMake), "OnClickButtonConfirm")]
 internal static class ContinuousMakeConfirmPatch
 {
+    // Runs before the preview guard so a click that means "stop this batch" is never
+    // reinterpreted as a normal craft.
+    [HarmonyPriority(Priority.First)]
     private static bool Prefix(MakeSubPageMake __instance)
     {
         return ContinuousMakeExecutionController.HandleConfirmClick(__instance);

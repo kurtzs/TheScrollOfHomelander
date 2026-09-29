@@ -2,6 +2,8 @@
 
 Use this reference before final verification, runtime debugging, or reviewing a broken Mod.
 
+On Linux, first follow [taiwu-linux-development](../../taiwu-linux-development/SKILL.md) for installation validation and direct workers; there is no full Linux release/deploy pipeline yet. A worker smoke test is not proof of game API compatibility or a successful Mod build.
+
 ## Build Validation
 
 Check:
@@ -13,6 +15,8 @@ Check:
 - No game DLL, `bin`, `obj`, or decompiled export ended up in the deployed Mod directory.
 
 ## Runtime Validation
+
+These are user-run acceptance checks. Never launch the game or run in-game automation.
 
 For frontend Mods:
 
@@ -71,5 +75,5 @@ Each should have a matching cleanup path in `Dispose` or equivalent lifecycle te
 2. Resolve the game API with `TaiwuStudio.DecompilerWorker` (`find-type` → `find-member` → decompile one member) and record side, assembly, type, member, and token.
 3. Edit or add plugin source under the side's source directory, keeping shared types in the shared directory.
 4. Build the side(s) with `TaiwuStudio.RoslynWorker` against the matching game library directory.
-5. Deploy to the game `Mod` directory with the project's deploy script, verifying SHA256 for every copied file.
+5. On Windows, deploy to the game `Mod` directory with the project's deploy script, verifying SHA256 for deployed plugins and sources. On Linux, follow the linked skill's deployment safeguards instead; do not run `Build-Deploy.ps1` as a Linux pipeline.
 6. Ask the user to fully restart the game, then inspect `Player.log` for plugin load, Harmony target failures, and the feature's own log lines. This workspace never launches the game itself.

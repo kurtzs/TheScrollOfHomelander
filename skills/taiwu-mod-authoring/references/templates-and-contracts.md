@@ -181,6 +181,8 @@ payload fields...
 
 There is no `.csproj` in the Mod build path. `TaiwuStudio.RoslynWorker` is the build system: it collects `.cs` files from the directories you name and references the managed DLLs found in `--game-libs`, choosing the frontend or backend required set by probing for `Assembly-CSharp.dll`.
 
+Windows PowerShell example; Linux uses `bash tools/run-worker.sh roslyn build ...` with validated paths as described in [taiwu-linux-development](../../taiwu-linux-development/SKILL.md).
+
 ```powershell
 & $worker build --project-root <modRoot> --game-libs <frontendLibs> `
   --assembly-name <Name> --output-plugin-path "Front\<Name>.dll" `

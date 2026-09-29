@@ -7,28 +7,32 @@ description: Inspect the installed The Scroll of Taiwu frontend and backend asse
 
 Decompilation is evidence about the game build that is installed right now. Never reuse an old source dump as ground truth, and never copy decompiled code into Mod sources — read the narrow span you need and record enough identity to reproduce the lookup.
 
+On a Linux host, first follow [taiwu-linux-development](../taiwu-linux-development/SKILL.md) for installation validation and invoke `bash tools/run-worker.sh decompiler ...` directly. The `query.ps1` wrapper and PowerShell examples below are Windows-specific.
+
 ## Choose The Source
 
-| Side | Assembly directory | What lives there |
+| Side | Assembly directory (Windows notation) | What lives there |
 | --- | --- | --- |
 | Frontend | `<gameRoot>\The Scroll of Taiwu_Data\Managed` | `Assembly-CSharp.dll` (Unity views, controllers, generated UI wrappers), `TaiwuModdingLib.dll`, `0Harmony.dll` |
 | Backend | `<gameRoot>\Backend` | `GameData.dll`, `GameData.Shared.dll`, `TaiwuModdingLib.dll`, `0Harmony.dll` |
 
-Default `gameRoot`: `C:\Program Files (x86)\Steam\steamapps\common\The Scroll Of Taiwu`. Verify it before relying on it; pass `-GameRoot` when the library moved.
+Windows default `gameRoot`: `C:\Program Files (x86)\Steam\steamapps\common\The Scroll Of Taiwu`. Verify it before relying on it; pass `-GameRoot` to the Windows wrapper when the library moved.
+
+The Linux default is `/home/shishanyue/.local/share/Steam/steamapps/common/The Scroll Of Taiwu`. Validate the actual frontend/backend directories and required DLLs before querying or compiling; worker smoke tests alone do not validate game APIs or a Mod build. At the 2026-09-29 setup snapshot, Steam reported app `838350` fully installed at build `25596993`.
 
 `GameData.Shared.dll` exists on both sides with different content. Read the copy from the directory of the side you are compiling for, and never compile a backend plugin against `Managed`.
 
 ## The Only Tool: TaiwuStudio.DecompilerWorker
 
-`tools\TaiwuStudio.DecompilerWorker\bin\Release\net8.0\TaiwuStudio.DecompilerWorker.exe` (.NET 8, source in `tools\TaiwuStudio.DecompilerWorker\Program.cs`). It reads installed DLLs directly: no index, no database, no cache to refresh, no external application to open.
+Windows executable: `tools\TaiwuStudio.DecompilerWorker\bin\Release\net8.0\TaiwuStudio.DecompilerWorker.exe` (.NET 8, source in `tools\TaiwuStudio.DecompilerWorker\Program.cs`). Linux uses the linked skill's launcher and `tools/.linux/bin/TaiwuStudio.DecompilerWorker/release/` output, retaining `net8.0`. It reads installed DLLs directly: no index, no database, no cache to refresh, no external application to open.
 
-Every command prints one JSON envelope:
+No arguments, `--help`, or `-h` print plain-text help. Other invocations print one JSON envelope, omitting null fields:
 
 ```json
 { "ok": true, "payload": { }, "diagnostics": [ ] }
 ```
 
-`ok:false` means failure and `payload` is null; the reason is in `diagnostics[].message`. Exit code is 0 on success, 2 on a handled failure, 1 on an exception.
+`ok:false` means failure and the null `payload` field is omitted; the reason is in `diagnostics[].message`. Exit code is 0 on success, 2 on a handled failure, 1 on an exception.
 
 | Command | Required | Optional | Returns |
 | --- | --- | --- | --- |
@@ -50,7 +54,7 @@ Notes that save time:
 
 ## Query Wrapper
 
-`scripts/query.ps1` is a readable front end for the worker. It locates the workspace root and the worker (Release, then Debug), resolves which game directory holds the requested assembly, and prints only the member's span with context instead of the whole type. `-Json` returns the raw worker envelope for scripting; `-Full` prints the entire type.
+`scripts/query.ps1` is a Windows-only front end as currently implemented; changing `-GameRoot` alone does not fix its `.exe` worker lookup and Windows path assumptions. It locates the workspace root and the worker (Release, then Debug), resolves which game directory holds the requested assembly, and prints only the member's span with context instead of the whole type. `-Json` returns the raw worker envelope for scripting; `-Full` prints the entire type. On Linux, use the direct worker and slice `payload.source` using `payload.sourceSpan`.
 
 ```powershell
 $q = "<skillRoot>\scripts\query.ps1"

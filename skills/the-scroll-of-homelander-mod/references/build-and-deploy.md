@@ -1,6 +1,8 @@
 # Build And Deploy
 
-The only sanctioned build entry point is `mods\TheScrollOfHomelander\Build-Deploy.ps1`. It wraps `tools\TaiwuStudio.RoslynWorker` (the file name contains "TaiwuStudio"; the tool itself is a standalone .NET 8 console app).
+The Windows release/deploy entry point is `mods\TheScrollOfHomelander\Build-Deploy.ps1`. It wraps `tools\TaiwuStudio.RoslynWorker` (the file name contains "TaiwuStudio"; the tool itself is a standalone .NET 8 console app).
+
+This script is Windows-only as currently implemented: changing `-GameRoot` does not fix its `.exe` worker path, Windows path handling, or profile defaults. On Linux, follow [taiwu-linux-development](../../taiwu-linux-development/SKILL.md) to validate the installation, build workers with `bash tools/build-linux.sh`, and invoke `bash tools/run-worker.sh roslyn build ...` directly. Output is `tools/.linux/bin/TaiwuStudio.<Name>Worker/release/`, retaining `net8.0`; no full Linux release/deploy pipeline exists yet. The script behaviour, PowerShell examples, and profile paths below are Windows-specific.
 
 ## What The Script Does
 
@@ -15,7 +17,7 @@ The only sanctioned build entry point is `mods\TheScrollOfHomelander\Build-Deplo
 - Aborts if `<gameRoot>\Mod\TheScrollOfHomelander\Config.lua` is missing.
 - Backs up the whole Steam Mod directory to `Documents\TaiwuModBackups\<yyyyMMdd-HHmmss>-quality-<8 hex>` first.
 - Publishes to **two** destinations: the Steam Mod root and `%LOCALAPPDATA%\TaiwuStudio\ModDevelopment\TheScrollOfHomelander-quality`. A destination that does not exist yet additionally receives `Config.lua`, `Settings.Lua`, `Assets`, `GradeBackgrounds`, `icon.png`; an existing one is not overwritten with those assets, which protects local configuration.
-- Copies all `Scripts\**\*.cs`, then the plugin DLL/PDB through a temp file + `File.Replace`, then the manifest.
+- Copies all `Scripts\**\*.cs` normally, then publishes each plugin DLL/PDB through a temp file + `File.Replace` (or `File.Move` for a new file), then copies the manifest normally. Only individual plugin publication is atomic; sources and the deployment as a whole are not.
 - Re-verifies SHA256 of every deployed plugin and `Scripts\*` file against the manifest and throws `Deployment hash mismatch: <path>` on any difference.
 - Prints `Deployed and hash-matched: <destination>` and `Backup: <path>`.
 
@@ -29,7 +31,7 @@ The only sanctioned build entry point is `mods\TheScrollOfHomelander\Build-Deplo
   -BackupRoot (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'TaiwuModBackups')
 ```
 
-Run it from the repository with PowerShell 7. Requires the Release Roslyn worker (`tools\TaiwuStudio.RoslynWorker\bin\Release\net8.0\TaiwuStudio.RoslynWorker.exe`) and the installed game libraries.
+Run it from the repository on Windows with PowerShell 7. Requires the Release Roslyn worker (`tools\TaiwuStudio.RoslynWorker\bin\Release\net8.0\TaiwuStudio.RoslynWorker.exe`) and the installed game libraries.
 
 ## Worker Flags, For Reference Or Manual Builds
 
@@ -44,7 +46,7 @@ $worker = "tools\TaiwuStudio.RoslynWorker\bin\Release\net8.0\TaiwuStudio.RoslynW
 - `--source-dir` is repeatable; with none given it compiles everything under `Scripts\`. Passing `Scripts\Shared` explicitly is required for shared types to land in both assemblies.
 - `--output-plugin-path` is relative to `<project-root>\Plugins`; passing `Plugins\Front\X.dll` produces the wrong `Plugins\Plugins\Front\X.dll`.
 - The worker prepends `using` directives for every namespace found in the referenced `Assembly-CSharp*` / `GameData.*` assemblies, so new source files do not need using statements for game namespaces. Keep explicit usings only for `System.*`, Harmony, Unity, and aliases.
-- Preprocessor symbols are `TAIWU_MOD`, `UNITY_STANDALONE_WIN`, `UNITY_64`, plus `DEBUG`/`RELEASE`.
+- Preprocessor symbols are `TAIWU_MOD`, `UNITY_STANDALONE_WIN`, `UNITY_64`, plus `DEBUG`/`RELEASE`. `UNITY_STANDALONE_WIN` is currently fixed even on a Linux host; distinguish the build host from a Windows/Proton or native Linux target, and do not claim native Linux game compatibility from a worker build.
 - References come from the game library directory; only a `.csproj` in the project root would add `HintPath` references, and this Mod deliberately has none.
 
 ## Failure Modes
