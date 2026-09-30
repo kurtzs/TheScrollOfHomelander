@@ -31,6 +31,9 @@ internal static class ContainerCompactPatches
     private static readonly FieldInfo CellSizeField = AccessTools.Field(typeof(InfinityScroll), "_cellSize");
     private static readonly FieldInfo ContainerField = AccessTools.Field(typeof(InfinityScroll), "_container");
     private static readonly FieldInfo DirectionField = AccessTools.Field(typeof(InfinityScroll), "scrollDirection");
+    private static readonly FieldInfo ItemListPlainScrollField = AccessTools.Field(typeof(ItemListScroll), "scroll");
+    private static readonly FieldInfo ItemListGroupedScrollField = AccessTools.Field(typeof(ItemListScroll), "groupedScroll");
+    private static readonly FieldInfo ItemListGroupedCardScrollField = AccessTools.Field(typeof(ItemListScroll), "groupedCardScroll");
     private static readonly MethodInfo RefreshStyleMetricsMethod = AccessTools.Method(typeof(InfinityScroll), "RefreshStyleMetrics");
 
     private static readonly ConditionalWeakTable<InfinityScroll, OriginalInfinityLayout> OriginalLayouts = new();
@@ -90,7 +93,7 @@ internal static class ContainerCompactPatches
 
         try
         {
-            return itemListScroll.IsCardMode && ReferenceEquals(itemListScroll.InfiniteScroll, instance);
+            return itemListScroll.IsCardMode && ReferenceEquals(GetActiveInfinityScroll(itemListScroll), instance);
         }
         catch
         {
@@ -443,7 +446,7 @@ internal static class ContainerCompactPatches
         InfinityScroll infinityScroll;
         try
         {
-            infinityScroll = itemListScroll.InfiniteScroll;
+            infinityScroll = GetActiveInfinityScroll(itemListScroll);
         }
         catch
         {
@@ -455,6 +458,32 @@ internal static class ContainerCompactPatches
 
         CacheTargetKind(infinityScroll, kind);
         ApplyOrRestore(infinityScroll, rerender);
+    }
+
+    private static InfinityScroll GetActiveInfinityScroll(ItemListScroll itemListScroll)
+    {
+        if (itemListScroll == null)
+            return null;
+
+        try
+        {
+            Component owner;
+            if (itemListScroll.IsCardMode)
+                owner = ItemListGroupedCardScrollField?.GetValue(itemListScroll) as Component;
+            else if (ItemListGroupedScrollField?.GetValue(itemListScroll) is Component grouped
+                && ItemListPlainScrollField?.GetValue(itemListScroll) == null)
+                owner = grouped;
+            else
+                owner = ItemListPlainScrollField?.GetValue(itemListScroll) as Component;
+
+            if (owner == null)
+                return null;
+            return AccessTools.Property(owner.GetType(), "InfiniteScroll")?.GetValue(owner) as InfinityScroll;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static TargetKind ResolveTargetKind(ItemListScroll itemListScroll)

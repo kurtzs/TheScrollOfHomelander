@@ -6,7 +6,7 @@ Use this reference when creating a Mod project, splitting frontend/backend code,
 
 Taiwu Mods commonly have two runtime sides:
 
-| Side | API root | Responsibilities |
+| Side | API root (Windows examples) | Responsibilities |
 | --- | --- | --- |
 | Frontend | `C:\Program Files (x86)\Steam\steamapps\common\The Scroll Of Taiwu\The Scroll of Taiwu_Data\Managed` | Unity UI, input, sprites, textures, scene objects, display state, `ModManager`, `UIBase`, `AsyncMethodDispatcher` |
 | Backend | `C:\Program Files (x86)\Steam\steamapps\common\The Scroll Of Taiwu\Backend` | Authoritative game data and rules, `GameData.*`, `GameData.Domains.*`, `DomainManager`, `DataContext`, `SerializableModData` |

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Taiwu Windows Development"
+  short_description: "Windows build, API checks, and safe Mod deployment"
+  default_prompt: "Use $taiwu-windows-development to build or inspect the Taiwu Mod on Windows."
+policy:
+  allow_implicit_invocation: true

@@ -7,6 +7,8 @@ description: Work on the 太祖绘卷 / TheScrollOfHomelander Mod in this worksp
 
 This skill is about *this* Mod in *this* workspace. For a real game API or patch target, load `taiwu-decompiled-api` first. For generic Taiwu Modding rules (side boundaries, Harmony policy, packaging hygiene), load `taiwu-mod-authoring`.
 
+On a Linux host, first follow [taiwu-linux-development](../taiwu-linux-development/SKILL.md) for installation validation, direct workers, and target-runtime path discovery. `Build-Deploy.ps1` is Windows-only as currently implemented; changing `-GameRoot` is not sufficient. There is no full Linux release/deploy pipeline yet.
+
 ## Hard Facts
 
 | Thing | Value |
@@ -16,21 +18,21 @@ This skill is about *this* Mod in *this* workspace. For a real game API or patch
 | Frontend plugin | `Plugins\Front\BetterTaiwuScrollFrontend.dll` (+ `.pdb`), assembly `BetterTaiwuScrollFrontend` |
 | Backend plugin | `Plugins\Back\BetterTaiwuScrollBackend.dll` (+ `.pdb`), assembly `BetterTaiwuScrollBackend` |
 | Source | `Scripts\Frontend`, `Scripts\Backend`, `Scripts\Shared` (Shared compiles into both) |
-| Build / deploy | `.\mods\TheScrollOfHomelander\Build-Deploy.ps1` (compile + manifest), add `-Deploy` to publish |
-| Release record | `mods\TheScrollOfHomelander\release-manifest.json` |
-| Per-side compiler output | `mods\TheScrollOfHomelander\build-records\Frontend.json`, `Backend.json` |
-| Runtime user data | `%USERPROFILE%\Documents\TheScrollOfHomelander\*.json` (game-written; never put source there) |
+| Windows build / deploy | `.\mods\TheScrollOfHomelander\Build-Deploy.ps1` (compile + manifest), add `-Deploy` to publish |
+| Windows pipeline release record | `mods\TheScrollOfHomelander\release-manifest.json` |
+| Windows pipeline compiler records | `mods\TheScrollOfHomelander\build-records\Frontend.json`, `Backend.json` |
+| Windows runtime user data | `%USERPROFILE%\Documents\TheScrollOfHomelander\*.json` (game-written; never put source there) |
 | Steam Mod target | `<gameRoot>\Mod\TheScrollOfHomelander` |
-| Development copy | `%LOCALAPPDATA%\TaiwuStudio\ModDevelopment\TheScrollOfHomelander-quality` |
+| Windows development copy | `%LOCALAPPDATA%\TaiwuStudio\ModDevelopment\TheScrollOfHomelander-quality` |
 
-Default `gameRoot` is `C:\Program Files (x86)\Steam\steamapps\common\The Scroll Of Taiwu`. Other directories, such as a historical checkout under `Documents\GitHub\taiwu_studio`, are archives: do not edit or push them.
+Windows default `gameRoot` is `C:\Program Files (x86)\Steam\steamapps\common\The Scroll Of Taiwu`; table paths use Windows notation. For Windows/Proton targets, resolve runtime data in the actual target profile, not the Linux host's Documents directory. Other directories, such as a historical checkout under `Documents\GitHub\taiwu_studio`, are archives: do not edit or push them.
 
 ## Working Rules For This Mod
 
 1. Read the current code before editing. Feature files are named `<Feature>Patches.cs` / `<Feature>Support.cs` under `Scripts\Frontend\Features` and `Scripts\Backend\Features`; shared state lives in `Scripts\Frontend\Shared`.
 2. Resolve the game API against the installed DLLs, never from an old dump. Prefer the existing helper in the Mod (`MakeGameApi`, `ReflectionHelpers`, `ModUserDataPaths`) over a new reflection call.
 3. Preserve vanilla behaviour whenever the feature's setting is off. Every user-visible change hangs off a `Config.lua` setting.
-4. Build with `Build-Deploy.ps1`; treat any compile error as a stop. Do not introduce a Mod-local `.csproj` or reference game DLLs from a new build path.
+4. On Windows, build with `Build-Deploy.ps1`; on Linux, use the linked skill's direct Roslyn worker workflow. Treat any compile error as a stop. Do not introduce a Mod-local `.csproj` or mix side-specific game references.
 5. Never launch the game or run in-game tests. Deployment is followed by a full manual restart, which the user performs.
 6. Keep edits to unrelated features and unrelated Config groups out of a change. Do not reformat untouched files.
 
@@ -61,6 +63,8 @@ Consequences when adding a patch class:
 
 ## Build And Deploy
 
+Windows PowerShell pipeline:
+
 ```powershell
 # compile both sides, rewrite release-manifest.json, no deployment
 .\mods\TheScrollOfHomelander\Build-Deploy.ps1
@@ -69,13 +73,13 @@ Consequences when adding a patch class:
 .\mods\TheScrollOfHomelander\Build-Deploy.ps1 -Deploy
 ```
 
-The script compiles Frontend against `The Scroll of Taiwu_Data\Managed` and Backend against `Backend`, each including `Scripts/Shared`, aborts on the first failing side, then writes `build-records\<Side>.json` and `release-manifest.json` (source digest, per-file source hashes, game assembly fingerprints, DLL/PDB hashes). With `-Deploy` it backs up the Steam Mod to `Documents\TaiwuModBackups\<timestamp>-quality-<id>`, copies sources and plugins atomically, verifies SHA256 per file, and fails loudly on a mismatch.
+The script compiles Frontend against `The Scroll of Taiwu_Data\Managed` and Backend against `Backend`, each including `Scripts/Shared`, aborts on the first failing side, then writes `build-records\<Side>.json` and `release-manifest.json` (source digest, per-file source hashes, game assembly fingerprints, DLL/PDB hashes). With `-Deploy` it backs up the Steam Mod to the Windows `Documents\TaiwuModBackups\<timestamp>-quality-<id>`, copies sources normally and publishes each plugin DLL/PDB individually via a temporary file and replace/move, then verifies plugin and source SHA256 hashes. Only individual plugin publication is atomic, not source copying or the whole deployment; hash mismatches fail the run.
 
 After a deploy, tell the user to fully exit and restart the game: a running Unity process keeps the old assembly loaded. When a change touches `Config.lua`, state explicitly which keys and version values changed.
 
 ## Definition Of Done
 
-- Both sides compile with zero errors through `Build-Deploy.ps1`.
+- Both sides compile with zero errors through `Build-Deploy.ps1` on Windows or the linked direct worker workflow on Linux; a worker-only smoke test is not a Mod build or release verification.
 - `Config.lua` declares exactly the built plugin paths, and any new setting key exists in both `Config.lua` and the matching `Plugin.cs` field.
 - Deployed `Plugins\**\*.dll`/`.pdb` hashes match the build output (the script checks this when `-Deploy` is used).
 - The patch group of a new patch class is the intended one, and installation failure of that group degrades only that feature.

@@ -2,6 +2,8 @@
 
 `export-core` and `export-dir` are the only caching the toolchain offers, and the cache is just files you can grep. They exist for broad offline search; a one-off question is faster with `find-type` / `find-member`.
 
+Windows PowerShell example. On Linux, follow [taiwu-linux-development](../../taiwu-linux-development/SKILL.md) and use `bash tools/run-worker.sh decompiler --command export-core ...` or `--command export-dir` with validated host paths. Output paths below use Windows notation.
+
 ```powershell
 $worker  = "<repoRoot>\tools\TaiwuStudio.DecompilerWorker\bin\Release\net8.0\TaiwuStudio.DecompilerWorker.exe"
 $managed = "<gameRoot>\The Scroll of Taiwu_Data\Managed"

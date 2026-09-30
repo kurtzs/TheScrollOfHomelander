@@ -11,6 +11,8 @@ Use this reference when a Mod worked before a game update, when a Harmony target
 
 ## Current Decompiler Worker
 
+Windows PowerShell example; on Linux, validate the installation and use the direct worker commands in [taiwu-linux-development](../../taiwu-linux-development/SKILL.md).
+
 ```powershell
 $worker = "tools\TaiwuStudio.DecompilerWorker\bin\Release\net8.0\TaiwuStudio.DecompilerWorker.exe"
 $managed = "C:\Program Files (x86)\Steam\steamapps\common\The Scroll Of Taiwu\The Scroll of Taiwu_Data\Managed"
@@ -20,7 +22,7 @@ $managed = "C:\Program Files (x86)\Steam\steamapps\common\The Scroll Of Taiwu\Th
 & $worker --command decompile-member --managed-dir $managed --assembly Assembly-CSharp --type "Game.Components.SortAndFilter.SortAndFilter" --member "ApplyFilterLineStates"
 ```
 
-Inspect only the relevant source span; never copy an entire decompiled type into the Mod. The `taiwu-decompiled-api` skill wraps these commands and slices the span for you.
+Inspect only the relevant source span; never copy an entire decompiled type into the Mod. The Windows-only `query.ps1` wrapper in `taiwu-decompiled-api` slices the span for you; with the direct worker, read `payload.sourceSpan` and slice `payload.source` explicitly.
 
 ## Common Failure Patterns
 
@@ -38,4 +40,4 @@ Log lifecycle transitions, target resolution failures, request IDs, and one summ
 
 ## Regression Matrix
 
-Test cold open, repeated refresh, moving/creating/removing an item, panel close/reopen, scene change, empty data, disabled setting, save/load, and a second supported view. For split features, test backend unavailable, stale request, invalid ID, and out-of-order response. Verify both the UI indicator and the actual filtered/action data.
+Ask the user to test cold open, repeated refresh, moving/creating/removing an item, panel close/reopen, scene change, empty data, disabled setting, save/load, and a second supported view. For split features, test backend unavailable, stale request, invalid ID, and out-of-order response. Verify both the UI indicator and the actual filtered/action data. Never launch the game or run in-game automation yourself.

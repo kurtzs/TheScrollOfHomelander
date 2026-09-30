@@ -217,7 +217,7 @@ internal static class UiPrewarmSupport
         if (needsMake)
         {
             Add(entries, "Make", UIElement.Make);
-            Add(entries, "SelectProductType", UIElement.SelectProductType);
+            // Product selection is now part of ViewMake; the legacy UI was removed.
         }
 
         var needsExchange = Plugin.EnableFastTransfer

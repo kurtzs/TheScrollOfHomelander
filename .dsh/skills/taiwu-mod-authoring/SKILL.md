@@ -7,6 +7,10 @@ description: Build, update, review, debug, and package The Scroll of Taiwu Mods 
 
 Treat a Taiwu Mod as a versioned runtime product. Preserve vanilla behavior when the feature is disabled, keep frontend and backend assemblies separate, and verify the exact DLL that the game will load.
 
+On a Linux host, first follow [taiwu-linux-development](../taiwu-linux-development/SKILL.md) for installation validation and direct worker commands. `Build-Deploy.ps1` and `query.ps1` are Windows-only as currently implemented; changing `-GameRoot` is not sufficient. There is no full Linux release/deploy pipeline yet.
+
+Never launch the game or run in-game automation. Runtime acceptance is performed by the user.
+
 ## Delivery Workflow
 
 1. **Inventory the active installation.** Resolve the game root, frontend `Managed` directory, backend directory, Mod root, and the actual user-data root. Inspect the target Mod's `Config.lua`, plugin paths, current version, existing changes, and both frontend/backend DLLs before editing. Never assume the Steam path or that AppData and Steam contain the same copy.
@@ -65,7 +69,7 @@ When a game update breaks a patch, do not guess from an old source dump. Re-reso
 
 - Compile the intended side(s) with zero errors and record output DLL/PDB paths.
 - Confirm `Config.lua` declares exactly those paths and that version/GameVersion changes are intentional.
-- Deploy to the actual Steam Mod root, and to the AppData development copy only when the deploy script maintains one; never overwrite unrelated user settings.
+- Deploy to the actual Steam Mod root, and to the Windows AppData development copy only when the deploy script maintains one; never overwrite unrelated user settings.
 - Compare SHA256 of source output and every deployed DLL/PDB.
 - Restart the game completely; confirm plugin load and absence of Harmony/Unity errors in `Player.log`.
 - Exercise normal, disabled, repeated-refresh, scene-close, empty-data, invalid-request, and save/load cases.

@@ -5,7 +5,7 @@ Two different persistence layers live side by side. Do not confuse them.
 | Layer | File | Holds | Written by |
 | --- | --- | --- | --- |
 | Game settings | `mods\TheScrollOfHomelander\Config.lua` | every user-facing toggle and slider, its default, group, and text | the developer, then the game's settings UI |
-| Mod memory | `%USERPROFILE%\Documents\TheScrollOfHomelander\*.json` | structural memory: last filter, last tool, thresholds, per-building choices | the Mod at runtime |
+| Mod memory (Windows runtime path) | `%USERPROFILE%\Documents\TheScrollOfHomelander\*.json` | structural memory: last filter, last tool, thresholds, per-building choices | the Mod at runtime |
 
 ## Adding A Setting
 
@@ -49,7 +49,9 @@ Several settings are gates for a whole family of features. Breaking one of these
 
 ## Runtime JSON Stores
 
-Directory: `%USERPROFILE%\Documents\TheScrollOfHomelander\` (game-written data; never put source or build output there). `ModUserDataPaths.GetFilePathCandidates` also looks in the legacy `<modRoot>\UserData\` directory for backward compatibility.
+Windows runtime directory: `%USERPROFILE%\Documents\TheScrollOfHomelander\` (game-written data; never put source or build output there). `ModUserDataPaths.GetFilePathCandidates` also looks in the legacy `<modRoot>\UserData\` directory for backward compatibility.
+
+On a Linux host, follow [taiwu-linux-development](../../taiwu-linux-development/SKILL.md) to resolve the target runtime's actual data directory. Windows/Proton uses its target profile, not necessarily the host's Documents directory; do not infer a native Linux path or overwrite/migrate existing JSON during build or deployment.
 
 | File | Owner |
 | --- | --- |

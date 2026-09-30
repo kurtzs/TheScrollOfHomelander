@@ -41,15 +41,6 @@ internal static class BuildingOutputStorageMemoryController
     private static readonly FieldInfo HandlerField =
         AccessTools.Field(typeof(ProductionCollectDestination), "_handler");
 
-    private static readonly FieldInfo LegacyBlockKeyField =
-        AccessTools.Field(typeof(UI_BuildingManage), "_blockKey");
-
-    private static readonly FieldInfo LegacyBlockDataField =
-        AccessTools.Field(typeof(UI_BuildingManage), "_blockData");
-
-    private static readonly FieldInfo LegacyBuildingModelField =
-        AccessTools.Field(typeof(UI_BuildingManage), "_buildingModel");
-
     private static bool _applyingMemory;
     private static int _userChangeDepth;
     private static bool _installed;
@@ -106,7 +97,6 @@ internal static class BuildingOutputStorageMemoryController
                     typeof(ProductionCollectDestinationChangeMemoryPatch),
                     nameof(ProductionCollectDestinationChangeMemoryPatch.Finalizer)));
 
-            InstallLegacyPatches(harmony);
             _installed = true;
             Debug.Log("[BetterTaiwuScroll] Per-building output storage memory patches installed.");
         }
@@ -121,62 +111,6 @@ internal static class BuildingOutputStorageMemoryController
         _installed = false;
         _applyingMemory = false;
         _userChangeDepth = 0;
-    }
-
-    private static void InstallLegacyPatches(Harmony harmony)
-    {
-        var refresh = AccessTools.Method(
-            typeof(UI_BuildingManage),
-            "RefreshShopEventStorageToggleGroup",
-            new[] { typeof(CToggleGroupObsolete), typeof(sbyte), typeof(bool), typeof(bool) });
-        var collectChange = AccessTools.Method(
-            typeof(UI_BuildingManage),
-            "OnCollectStorageToggleChange",
-            new[] { typeof(CToggleObsolete), typeof(CToggleObsolete) });
-        var outputChange = AccessTools.Method(
-            typeof(UI_BuildingManage),
-            "OnOutputStorageToggleChange",
-            new[] { typeof(CToggleObsolete), typeof(CToggleObsolete) });
-        var soldChange = AccessTools.Method(
-            typeof(UI_BuildingManage),
-            "OnSoldStorageToggleChange",
-            new[] { typeof(CToggleObsolete), typeof(CToggleObsolete) });
-
-        if (refresh != null)
-        {
-            harmony.Patch(
-                refresh,
-                prefix: new HarmonyMethod(
-                    typeof(LegacyBuildingManageRefreshStorageMemoryPatch),
-                    nameof(LegacyBuildingManageRefreshStorageMemoryPatch.Prefix)));
-        }
-
-        if (collectChange != null)
-        {
-            harmony.Patch(
-                collectChange,
-                postfix: new HarmonyMethod(
-                    typeof(LegacyBuildingManageStorageChangeMemoryPatch),
-                    nameof(LegacyBuildingManageStorageChangeMemoryPatch.CollectPostfix)));
-        }
-
-        if (outputChange != null)
-        {
-            harmony.Patch(
-                outputChange,
-                postfix: new HarmonyMethod(
-                    typeof(LegacyBuildingManageStorageChangeMemoryPatch),
-                    nameof(LegacyBuildingManageStorageChangeMemoryPatch.OutputPostfix)));
-        }
-
-        if (soldChange != null)
-        {
-            harmony.Patch(
-                soldChange,
-                postfix: new HarmonyMethod(
-                    typeof(LegacyBuildingManageStorageChangeMemoryPatch),
-                    nameof(LegacyBuildingManageStorageChangeMemoryPatch.SoldPostfix)));
-        }
     }
 
     internal static void BeginUserChange()
@@ -235,24 +169,6 @@ internal static class BuildingOutputStorageMemoryController
         }
     }
 
-    internal static void RestoreLegacy(UI_BuildingManage view)
-    {
-        if (_applyingMemory || _userChangeDepth > 0 || view == null)
-            return;
-
-        try
-        {
-            if (!TryGetLegacyContext(view, out var key, out var templateId, out var model))
-                return;
-
-            RestoreCore(model, key, templateId, "UI_BuildingManage");
-        }
-        catch (Exception ex)
-        {
-            Debug.LogWarning("[BetterTaiwuScroll] Failed to restore legacy building output storage memory: " + ex);
-        }
-    }
-
     internal static void SaveSelection(ProductionCollectDestination view, int newIndex)
     {
         if (_applyingMemory || view == null)
@@ -302,47 +218,6 @@ internal static class BuildingOutputStorageMemoryController
         }
     }
 
-    internal static void SaveLegacySelection(UI_BuildingManage view, CToggleObsolete toggle, bool? isItem)
-    {
-        if (_applyingMemory || view == null || toggle == null)
-            return;
-
-        try
-        {
-            if (!TryGetLegacyContext(view, out var key, out var templateId, out var model))
-                return;
-
-            var storage = ToggleKeyToStorage(toggle.Key);
-            var itemSelection = isItem ?? IsLegacyItemToggle(toggle);
-            var current = model.GetBuildingShopEventSetting(key.BuildingBlockIndex);
-            var setting = new BuildingResourceOutputSetting(current);
-            if (itemSelection)
-            {
-                if (!BuildingResourceOutputSetting.AllowedItemStorageTypes.Contains(storage))
-                    return;
-                setting.ItemStorage = storage;
-            }
-            else
-            {
-                if (!BuildingResourceOutputSetting.AllowedResourceStorageTypes.Contains(storage))
-                    return;
-                setting.ResourceStorage = storage;
-            }
-
-            var applied = new BuildingResourceOutputSetting(setting);
-            model.BuildingResourceOutputSettings[key.BuildingBlockIndex] = applied;
-            model.SetBuildingResourceOutputSetting(key.BuildingBlockIndex, new BuildingResourceOutputSetting(applied));
-            BuildingOutputStorageSettingsStore.Save(key, templateId, setting);
-            Debug.Log("[BetterTaiwuScroll] Saved legacy building output storage memory for "
-                + FormatContext(key, templateId)
-                + " (resource=" + setting.ResourceStorage + ", item=" + setting.ItemStorage + ").");
-        }
-        catch (Exception ex)
-        {
-            Debug.LogWarning("[BetterTaiwuScroll] Failed to save legacy building output storage memory: " + ex);
-        }
-    }
-
     private static void RestoreCore(BuildingModel model, BuildingBlockKey key, short templateId, string source)
     {
         if (model == null || key.IsInvalid || templateId < 0)
@@ -386,51 +261,6 @@ internal static class BuildingOutputStorageMemoryController
     private static IProductionHandler GetHandler(ProductionCollectDestination view)
     {
         return HandlerField?.GetValue(view) as IProductionHandler;
-    }
-
-    private static bool TryGetLegacyContext(
-        UI_BuildingManage view,
-        out BuildingBlockKey key,
-        out short templateId,
-        out BuildingModel model)
-    {
-        key = BuildingBlockKey.Invalid;
-        templateId = -1;
-        model = null;
-        if (LegacyBlockKeyField == null || LegacyBlockDataField == null || LegacyBuildingModelField == null)
-            return false;
-
-        key = (BuildingBlockKey)LegacyBlockKeyField.GetValue(view);
-        var data = LegacyBlockDataField.GetValue(view) as BuildingBlockData;
-        model = LegacyBuildingModelField.GetValue(view) as BuildingModel;
-        if (data != null)
-            templateId = data.TemplateId;
-
-        return !key.IsInvalid && templateId >= 0 && model != null;
-    }
-
-    private static GameData.Domains.Taiwu.TaiwuVillageStorageType ToggleKeyToStorage(int key)
-    {
-        return key switch
-        {
-            0 => GameData.Domains.Taiwu.TaiwuVillageStorageType.Inventory,
-            1 => GameData.Domains.Taiwu.TaiwuVillageStorageType.Warehouse,
-            2 => GameData.Domains.Taiwu.TaiwuVillageStorageType.Treasury,
-            3 => GameData.Domains.Taiwu.TaiwuVillageStorageType.Stock,
-            _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown building storage toggle key")
-        };
-    }
-
-    private static bool IsLegacyItemToggle(CToggleObsolete toggle)
-    {
-        var group = toggle.GetComponentInParent<CToggleGroupObsolete>();
-        if (group == null)
-            return toggle.Key == 1 || toggle.Key == 3;
-
-        var warehouse = group.Get(1);
-        var stock = group.Get(3);
-        return (warehouse != null && warehouse.gameObject.activeSelf)
-            || (stock != null && stock.gameObject.activeSelf);
     }
 
     private static string FormatContext(BuildingBlockKey key, short templateId)
@@ -629,31 +459,5 @@ internal static class ProductionCollectDestinationChangeMemoryPatch
     internal static void Finalizer()
     {
         BuildingOutputStorageMemoryController.EndUserChange();
-    }
-}
-
-internal static class LegacyBuildingManageRefreshStorageMemoryPatch
-{
-    internal static void Prefix(UI_BuildingManage __instance)
-    {
-        BuildingOutputStorageMemoryController.RestoreLegacy(__instance);
-    }
-}
-
-internal static class LegacyBuildingManageStorageChangeMemoryPatch
-{
-    internal static void CollectPostfix(UI_BuildingManage __instance, CToggleObsolete togNew)
-    {
-        BuildingOutputStorageMemoryController.SaveLegacySelection(__instance, togNew, false);
-    }
-
-    internal static void OutputPostfix(UI_BuildingManage __instance, CToggleObsolete togNew)
-    {
-        BuildingOutputStorageMemoryController.SaveLegacySelection(__instance, togNew, null);
-    }
-
-    internal static void SoldPostfix(UI_BuildingManage __instance, CToggleObsolete togNew)
-    {
-        BuildingOutputStorageMemoryController.SaveLegacySelection(__instance, togNew, false);
     }
 }

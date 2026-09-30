@@ -1,6 +1,6 @@
 # Reference Mod Patterns
 
-These patterns come from Mods analyzed under `C:\Users\Administrator\Documents\GitHub\taiwu_studio\docs\reference`. Use them as implementation patterns, not copy sources.
+These patterns come from Mods analyzed under the historical Windows archive `C:\Users\Administrator\Documents\GitHub\taiwu_studio\docs\reference`, not the active workspace. Use them as implementation patterns, not copy sources.
 
 ## Base Helper Mod
 
